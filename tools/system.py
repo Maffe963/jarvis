@@ -21,6 +21,10 @@ def set_announcer(fn) -> None:
     _announce = fn
 
 
+def announce(message: str) -> None:
+    _announce(message)
+
+
 # ---------- apps ----------
 
 _start_apps: list[dict] | None = None
@@ -237,7 +241,7 @@ def run_powershell(command: str) -> str:
 
 def set_timer(seconds: int, label: str = "") -> str:
     def ring():
-        _announce(f"Sir, your {label + ' ' if label else ''}timer is done.")
+        announce(f"Sir, your {label + ' ' if label else ''}timer is done.")
 
     t = threading.Timer(seconds, ring)
     t.daemon = True

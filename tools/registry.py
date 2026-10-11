@@ -1,4 +1,5 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
+from tools import reminders
 from tools.files import list_files, read_file, write_file
 from tools.search import web_search
 from tools.system import SYSTEM_TOOL_MAP, SYSTEM_TOOLS, needs_confirmation
@@ -48,6 +49,33 @@ TOOLS = [
             },
             "required": []
         }
+    },
+    {
+        "name": "set_reminder",
+        "description": "Remind the user at a specific clock time (Jarvis says it aloud then). Use for "
+                       "'remind me at 3pm...' or 'tomorrow morning...'. For 'in N minutes' use set_timer.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "when": {"type": "string", "description": "Local date and time, ISO 8601, e.g. 2026-10-11T15:00"},
+                "message": {"type": "string", "description": "What to remind them about, e.g. 'call mom'"}
+            },
+            "required": ["when", "message"]
+        }
+    },
+    {
+        "name": "list_reminders",
+        "description": "List upcoming reminders.",
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+        "name": "cancel_reminder",
+        "description": "Cancel reminders by id (from list_reminders) or by words in the message.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id_or_text": {"type": "string"}},
+            "required": ["id_or_text"]
+        }
     }
 ] + SYSTEM_TOOLS
 
@@ -56,6 +84,9 @@ TOOL_MAP = {
     "read_file": read_file,
     "write_file": write_file,
     "list_files": list_files,
+    "set_reminder": reminders.set_reminder,
+    "list_reminders": reminders.list_reminders,
+    "cancel_reminder": reminders.cancel_reminder,
     **SYSTEM_TOOL_MAP,
 }
 

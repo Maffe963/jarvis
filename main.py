@@ -9,6 +9,7 @@ import anthropic
 
 from brain import BackendError, think, warm_up
 from memory.conversation import add_turn, load_history, save_history
+from tools import reminders
 from tools.system import set_announcer
 
 EXIT_PHRASES = ("quit", "exit", "goodbye", "go to sleep")
@@ -60,6 +61,7 @@ def confirm_text(question: str) -> bool:
 
 def run_text() -> None:
     warm_up()
+    reminders.start()
     print("Jarvis online (text mode). Type 'quit' to exit.\n")
     history = load_history()
     try:
@@ -127,6 +129,7 @@ def run_voice() -> None:
     print(f"Jarvis online (voice mode), listening on: {microphone}")
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")
+    reminders.start()
     woken = False  # already woken by interrupting Jarvis mid-sentence
     try:
         while True:

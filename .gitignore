@@ -5,3 +5,4 @@ __pycache__/
 memory/history.json
 memory/history.json.corrupt-*
 .claude/settings.local.json
+memory/reminders.json
