@@ -1,5 +1,5 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
-from tools import messaging, reminders
+from tools import finder, messaging, reminders
 from tools.files import list_files, read_file, write_file
 from tools.search import web_search
 from tools.system import SYSTEM_TOOL_MAP, SYSTEM_TOOLS, needs_confirmation
@@ -77,7 +77,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + messaging.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -87,6 +87,7 @@ TOOL_MAP = {
     "set_reminder": reminders.set_reminder,
     "list_reminders": reminders.list_reminders,
     "cancel_reminder": reminders.cancel_reminder,
+    **finder.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
@@ -126,6 +127,8 @@ def ack_phrase(name: str, inputs: dict) -> str:
         "send_email": lambda: "sending that email",
         "send_discord": lambda: "sending that message",
         "save_contact": lambda: "saving that contact",
+        "find_files": lambda: "searching now",
+        "open_path": lambda: "opening that",
     }
     return phrases.get(name, lambda: "checking now")()
 
@@ -135,7 +138,8 @@ def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None) -> str:
     func = TOOL_MAP.get(name)
     if not func:
         return f"Unknown tool: {name}"
-    question = messaging.confirmation(name, inputs) or needs_confirmation(name, inputs)
+    question = (finder.confirmation(name, inputs) or messaging.confirmation(name, inputs)
+                or needs_confirmation(name, inputs))
     if question and not (confirm and confirm(question)):
         return "The user declined this action. Do not retry it."
     if acknowledge:
