@@ -10,7 +10,7 @@ import webbrowser
 
 import psutil
 
-from tools import files
+from tools import files, monitors
 
 user32 = ctypes.windll.user32
 
@@ -58,7 +58,25 @@ def _match_app(name: str) -> dict | None:
     return apps[names.index(close[0])] if close else None
 
 
-def open_app(name: str) -> str:
+def _open_on_monitor(launch, monitor: str, what: str) -> str:
+    """Launch something; if a monitor was named, move the window it opens onto that monitor."""
+    if not monitor.strip():
+        launch()
+        return f"Opened {what}."
+    target = monitors.find_monitor(monitor)
+    if not target:
+        launch()
+        return f"Opened {what}, but I'm not sure which screen '{monitor}' is. Monitors:\n{monitors.list_monitors()}"
+    before = set(monitors.top_level_windows())
+    launch()
+    hwnd = monitors.wait_for_new_window(before)
+    if not hwnd:
+        return f"Opened {what}, but couldn't find its window to move."
+    monitors.place_window(hwnd, target)
+    return f"Opened {what} on {monitors.describe(target, len(monitors.monitors())).split(':')[0]}."
+
+
+def open_app(name: str, monitor: str = "") -> str:
     global _start_apps
     app = _match_app(name)
     if not app:
@@ -66,8 +84,8 @@ def open_app(name: str) -> str:
         app = _match_app(name)
     if not app:
         return f"No installed app matching '{name}'."
-    subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{app['AppID']}"])
-    return f"Opened {app['Name']}."
+    return _open_on_monitor(lambda: subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{app['AppID']}"]),
+                            monitor, app["Name"])
 
 
 def _matching_processes(name: str) -> set[str]:
@@ -190,9 +208,12 @@ def volume(action: str, level: int | None = None) -> str:
 
 # ---------- web ----------
 
-def open_url(url: str) -> str:
+def open_url(url: str, monitor: str = "") -> str:
     if "://" not in url:
         url = "https://" + url
+    if monitor.strip():
+        # A new window, not a tab in an existing one, so only this page moves.
+        return _open_on_monitor(lambda: webbrowser.open(url, new=1), monitor, url)
     webbrowser.open(url)
     return f"Opened {url}."
 
@@ -301,8 +322,11 @@ def _schema(name, description, properties=None, required=None):
 
 
 SYSTEM_TOOLS = [
-    _schema("open_app", "Launch an installed application by name (e.g. 'Spotify', 'Chrome', 'Calculator').",
-            {"name": {"type": "string"}}, ["name"]),
+    _schema("open_app", "Launch an installed application by name (e.g. 'Spotify', 'Chrome', 'Calculator'), "
+            "optionally on a specific monitor.",
+            {"name": {"type": "string"},
+             "monitor": {"type": "string", "description": "Only if the user named a screen: 'left', 'right', "
+                                                          "'main', '2', 'the vertical one', ..."}}, ["name"]),
     _schema("close_app", "Close a running application by name. The user will be asked to confirm.",
             {"name": {"type": "string", "description": "App or process name, e.g. 'chrome' or 'spotify'"}}, ["name"]),
     _schema("list_running_apps", "List the titles of open windows."),
@@ -316,8 +340,9 @@ SYSTEM_TOOLS = [
              "level": {"type": "integer", "description": "For 'set': target 0-100. For 'up'/'down': step size (default 10)."}},
             ["action"]),
     _schema("open_url", "Open a URL in the default browser. Use for websites, YouTube searches "
-            "(https://www.youtube.com/results?search_query=...), Google searches, etc.",
-            {"url": {"type": "string"}}, ["url"]),
+            "(https://www.youtube.com/results?search_query=...), Google searches, etc., optionally on a specific monitor.",
+            {"url": {"type": "string"},
+             "monitor": {"type": "string", "description": "Only if the user named a screen"}}, ["url"]),
     _schema("system_info", "Get CPU, RAM, disk, and battery status."),
     _schema("power", "Lock, sleep, restart, shut down, or sign out of the computer. Everything except lock is confirmed with the user.",
             {"action": {"type": "string", "enum": ["lock", "sleep", "restart", "shutdown", "sign_out"]}}, ["action"]),

@@ -1,5 +1,5 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
-from tools import desktop, finder, lists, messaging, projects, reminders, voice_settings, weather
+from tools import desktop, finder, lists, messaging, monitors, projects, reminders, voice_settings, weather
 from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
                          revoke_folder_access, write_file)
 from tools.search import web_search
@@ -94,7 +94,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -113,6 +113,7 @@ TOOL_MAP = {
     **desktop.TOOL_MAP,
     **projects.TOOL_MAP,
     **voice_settings.TOOL_MAP,
+    **monitors.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
@@ -164,6 +165,7 @@ def ack_phrase(name: str, inputs: dict) -> str:
         "grant_folder_access": lambda: "granting that access",
         "revoke_folder_access": lambda: "removing that access",
         "set_voice": lambda: "changing my voice",
+        "move_window_to_monitor": lambda: f"moving it to the {inputs.get('monitor', 'other')} screen",
         "quit_jarvis": lambda: "closing Jarvis completely" if inputs.get("completely") else "going on standby",
     }
     return phrases.get(name, lambda: "checking now")()
