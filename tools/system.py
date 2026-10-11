@@ -88,25 +88,145 @@ def open_app(name: str, monitor: str = "") -> str:
                             monitor, app["Name"])
 
 
-def _matching_processes(name: str) -> set[str]:
-    """Exe names for `name`: exact matches if any, else names that start with it. Never loose substrings."""
-    wanted = name.lower().replace(" ", "").removesuffix(".exe")
+# What people call an app -> its program name.
+APP_ALIASES = {
+    "word": "winword", "microsoft word": "winword", "excel": "excel", "powerpoint": "powerpnt",
+    "outlook": "outlook", "onenote": "onenote", "vs code": "code", "vscode": "code", "visual studio code": "code",
+    "edge": "msedge", "microsoft edge": "msedge", "google chrome": "chrome", "file explorer": "explorer",
+    "explorer": "explorer", "files": "explorer", "teams": "ms-teams", "calculator": "calculatorapp",
+    "settings": "systemsettings", "task manager": "taskmgr", "terminal": "windowsterminal",
+    "command prompt": "cmd", "photos": "photos", "paint": "mspaint", "snipping tool": "snippingtool",
+}
+# Parts of Windows itself that must never be closed.
+NEVER_CLOSE = {"dwm", "csrss", "winlogon", "searchhost", "searchapp", "startmenuexperiencehost",
+               "shellexperiencehost", "textinputhost", "lockapp", "systemtray", "applicationframehost"}
+EVERYTHING = {"all", "everything", "all apps", "all my apps", "all windows", "everything open"}
+
+
+def _jarvis_pids() -> set[int]:
+    """Jarvis and the terminal it runs in: closing those would close Jarvis itself."""
+    pids, proc = set(), psutil.Process()
+    while proc is not None:
+        pids.add(proc.pid)
+        try:
+            proc = proc.parent()
+        except psutil.Error:
+            break
+    return pids
+
+
+def _app_windows() -> list[dict]:
+    """Open app windows with their program names (Store apps resolved to the real app, not their frame host)."""
+    import win32gui
+    import win32process
+
+    def exe_of(pid: int) -> str:
+        try:
+            return psutil.Process(pid).name().lower().removesuffix(".exe")
+        except psutil.Error:
+            return ""
+
+    import win32con
+
+    protected = _jarvis_pids()
+    console = ctypes.windll.kernel32.GetConsoleWindow()
+    found = []
+    for hwnd, title in _visible_windows().items():
+        if _is_background_window(hwnd, win32con, win32gui):
+            continue
+        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        exe = exe_of(pid)
+        if exe == "applicationframehost":  # Store apps (Calculator, Settings...) live in a child window
+            children = []
+            win32gui.EnumChildWindows(hwnd, lambda child, _: children.append(child), None)
+            for child in children:
+                child_pid = win32process.GetWindowThreadProcessId(child)[1]
+                if child_pid != pid:
+                    pid, exe = child_pid, exe_of(child_pid)
+                    break
+        if (not exe or exe in NEVER_CLOSE or pid in protected or hwnd == console
+                or (exe == "explorer" and win32gui.GetClassName(hwnd) != "CabinetWClass")):
+            continue  # explorer.exe is also the taskbar and desktop; only its folder windows are "File Explorer"
+        found.append({"hwnd": hwnd, "title": title, "exe": exe, "pid": pid})
+    return found
+
+
+def _is_background_window(hwnd: int, win32con, win32gui) -> bool:
+    """Tool windows, zero-size helpers and hidden ("cloaked") Store app frames aren't apps the user sees."""
+    if win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE) & win32con.WS_EX_TOOLWINDOW:
+        return True
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    if right - left < 50 or bottom - top < 50:
+        return True
+    cloaked = ctypes.c_int(0)
+    ctypes.windll.dwmapi.DwmGetWindowAttribute(hwnd, 14, ctypes.byref(cloaked), ctypes.sizeof(cloaked))  # DWMWA_CLOAKED
+    return bool(cloaked.value)
+
+
+_labels: dict[str, str] = {}
+
+
+def _app_label(window: dict) -> str:
+    """The program's own name ("TradingView", "Spotify"), from its file's description."""
+    exe = window["exe"]
+    if exe not in _labels:
+        label = ""
+        try:
+            import win32api
+
+            path = psutil.Process(window["pid"]).exe()
+            lang, page = win32api.GetFileVersionInfo(path, "\\VarFileInfo\\Translation")[0]
+            label = win32api.GetFileVersionInfo(path, f"\\StringFileInfo\\{lang:04x}{page:04x}\\FileDescription") or ""
+        except Exception:
+            pass  # Store apps' files can't be read; fall back to the window title below
+        if not label.strip():
+            title = window["title"]
+            return title if len(title) <= 30 else exe
+        _labels[exe] = label.strip()
+    return _labels[exe]
+
+
+def _matching_windows(name: str) -> list[dict]:
+    windows = _app_windows()
+    wanted = name.lower().strip().removesuffix(".exe")
+    if wanted in EVERYTHING:
+        return windows
+    compact = wanted.replace(" ", "")
+    exe = APP_ALIASES.get(wanted, compact)
+    by_program = [w for w in windows if w["exe"] == exe or (len(compact) >= 3 and w["exe"].startswith(compact))]
+    if by_program:
+        return by_program
     if len(wanted) < 3:
-        return set()
-    running = {p.info["name"] for p in psutil.process_iter(["name"]) if p.info["name"]}
-    stem = {exe: exe.lower().replace(" ", "").removesuffix(".exe") for exe in running}
-    exact = {exe for exe, s in stem.items() if s == wanted}
-    return exact or {exe for exe, s in stem.items() if s.startswith(wanted)}
+        return []
+    return [w for w in windows if wanted in w["title"].lower()]
 
 
 def close_app(name: str) -> str:
-    """Politely close an app (like clicking X), so it can still prompt to save work."""
-    exe_names = _matching_processes(name)
-    if not exe_names:
-        return f"No running process matching '{name}'. Use the process name, e.g. 'chrome' or 'spotify'."
-    for exe in exe_names:
-        subprocess.run(["taskkill", "/IM", exe], capture_output=True)
-    return f"Asked {', '.join(sorted(exe_names))} to close."
+    """Politely close an app's windows, like clicking X: apps can still ask to save unsaved work."""
+    import win32con
+    import win32gui
+
+    targets = _matching_windows(name)
+    if not targets:
+        open_now = sorted({_app_label(w) for w in _app_windows()})
+        return f"Nothing open matching '{name}'. Open apps: {', '.join(open_now) or 'none'}."
+    for w in targets:
+        win32gui.PostMessage(w["hwnd"], win32con.WM_CLOSE, 0, 0)
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        still = [w for w in targets if win32gui.IsWindow(w["hwnd"]) and win32gui.IsWindowVisible(w["hwnd"])]
+        if not still:
+            break
+        time.sleep(0.2)
+    closed = sorted({_app_label(w) for w in targets if w not in still})
+    waiting = sorted({_app_label(w) for w in still})
+    parts = []
+    if closed:
+        parts.append(f"Closed {', '.join(closed)}.")
+    if waiting:
+        parts.append(f"{', '.join(waiting)} {'is' if len(waiting) == 1 else 'are'} still open, probably asking "
+                     "whether to save changes.")
+    return " ".join(parts)
 
 
 def list_running_apps() -> str:
@@ -290,8 +410,10 @@ def set_timer(seconds: int, label: str = "") -> str:
 def needs_confirmation(name: str, inputs: dict) -> str | None:
     """Return a question to ask the user before running this tool call, or None if it's safe."""
     if name == "close_app":
-        exe_names = _matching_processes(inputs.get("name", ""))
-        return f"Close {', '.join(sorted(exe_names))}?" if exe_names else None
+        # Closing one app is as safe as clicking its X (it can still ask to save); ask only when it's
+        # several different apps, e.g. a vague name or "everything".
+        apps = sorted({_app_label(w) for w in _matching_windows(inputs.get("name", ""))})
+        return f"Close {', '.join(apps)}?" if len(apps) > 1 else None
     if name == "power" and inputs.get("action") != "lock":
         return f"{inputs.get('action', '').replace('_', ' ').capitalize()} the computer?"
     if name == "run_powershell":
@@ -327,8 +449,10 @@ SYSTEM_TOOLS = [
             {"name": {"type": "string"},
              "monitor": {"type": "string", "description": "Only if the user named a screen: 'left', 'right', "
                                                           "'main', '2', 'the vertical one', ..."}}, ["name"]),
-    _schema("close_app", "Close a running application by name. The user will be asked to confirm.",
-            {"name": {"type": "string", "description": "App or process name, e.g. 'chrome' or 'spotify'"}}, ["name"]),
+    _schema("close_app", "Close an open app politely, like clicking its X (it can still ask to save work; never "
+            "force-quits). Use the name the user said, e.g. 'Spotify', 'Word', 'VS Code', 'File Explorer', or "
+            "'everything'. Closing several apps at once is confirmed with the user.",
+            {"name": {"type": "string"}}, ["name"]),
     _schema("list_running_apps", "List the titles of open windows."),
     _schema("focus_window", "Bring an open window to the front by part of its title.",
             {"title": {"type": "string"}}, ["title"]),
