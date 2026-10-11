@@ -7,7 +7,7 @@ load_dotenv()
 
 import anthropic
 
-from brain import BackendError, think
+from brain import BackendError, think, warm_up
 from memory.conversation import add_turn, load_history, save_history
 from tools.system import set_announcer
 
@@ -58,6 +58,7 @@ def confirm_text(question: str) -> bool:
 
 
 def run_text() -> None:
+    warm_up()
     print("Jarvis online (text mode). Type 'quit' to exit.\n")
     history = load_history()
     try:
@@ -75,6 +76,10 @@ def run_text() -> None:
 
 
 def run_voice() -> None:
+    import threading
+    import winsound
+
+    from voice import mic, select_microphone, stt, wake_word
     from voice.stt import record_until_silence, transcribe
     from voice.tts import speak
     from voice.wake_word import listen_for_wake_word
@@ -85,6 +90,7 @@ def run_voice() -> None:
         if len(question) > MAX_SPOKEN_QUESTION:
             question = question.split(":")[0].rstrip("?") + "? The details are on screen."
         speak(question)
+        mic.flush()  # don't mistake Jarvis's own voice for the answer
         answer = transcribe(record_until_silence(no_speech_timeout_s=5))
         print(f"You: {answer or '(no answer)'}")
         approved = is_yes(answer)
@@ -93,16 +99,21 @@ def run_voice() -> None:
         return approved
 
     set_announcer(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg)))
-    from voice import select_microphone
-
     history = load_history()
-    print(f"Jarvis online (voice mode), listening on: {select_microphone()}")
+    microphone = select_microphone()
+    print("Starting up...")
+    warm_up()
+    wake_word._get_model()
+    stt._get_model()
+    print(f"Jarvis online (voice mode), listening on: {microphone}")
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")
     try:
         while True:
             listen_for_wake_word()
             print("[awake] listening...")
+            # Beep in the background so recording starts immediately.
+            threading.Thread(target=winsound.Beep, args=(880, 120), daemon=True).start()
             heard = transcribe(record_until_silence())
             if not heard:
                 print("[nothing heard]")

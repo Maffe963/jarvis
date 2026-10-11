@@ -1,9 +1,12 @@
+import atexit
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from datetime import datetime
 
 from tools.registry import TOOLS, run_tool
@@ -29,9 +32,9 @@ class BackendError(Exception):
 
 def think(conversation_history: list[dict], confirm=None) -> str:
     """Run one turn. `confirm(question) -> bool` is asked before risky tool calls; without it they're refused."""
-    system = f"{SYSTEM_PROMPT}\n\nCurrent date and time: {datetime.now():%A, %B %d, %Y, %I:%M %p}."
     if BACKEND == "subscription":
-        return _think_claude_code(conversation_history, system, confirm)
+        return _get_session().ask(conversation_history, confirm)
+    system = f"{SYSTEM_PROMPT}\n\nCurrent date and time: {datetime.now():%A, %B %d, %Y, %I:%M %p}."
     return _think_api(conversation_history, system, confirm)
 
 
@@ -83,27 +86,130 @@ def _think_api(conversation_history: list[dict], system: str, confirm) -> str:
 
 # ---------- Claude Code subscription backend ----------
 
-_bridge = None
-_mcp_config_path = None
+class ClaudeCodeSession:
+    """One long-running `claude -p` that takes a message per turn over stream-json.
+
+    Starting Claude Code costs a few seconds, so it's started once and kept warm; follow-up replies
+    then take about a second. Claude Code keeps the conversation itself. If the process dies, the
+    next turn starts a fresh one and replays recent history so nothing is forgotten.
+    """
+
+    def __init__(self) -> None:
+        from tools.bridge import ToolBridge
+
+        claude = shutil.which("claude")
+        if not claude:
+            raise BackendError("I can't find Claude Code on this PC, sir. Please install it or switch to API mode.")
+        self.bridge = ToolBridge()
+        config = {"mcpServers": {"jarvis": {
+            "command": sys.executable,
+            "args": [os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")],
+            "env": {"JARVIS_BRIDGE_URL": self.bridge.url, "JARVIS_BRIDGE_TOKEN": self.bridge.token},
+        }}}
+        fd, self._mcp_config_path = tempfile.mkstemp(prefix="jarvis-mcp-", suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(config, f)
+        self._cmd = [
+            claude, "-p",
+            "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+            "--model", os.environ.get("JARVIS_MODEL", "sonnet"),
+            "--effort", os.environ.get("JARVIS_EFFORT", "low"),
+            "--system-prompt", SYSTEM_PROMPT,
+            "--tools", "",                      # no built-in Claude Code tools (Bash, Edit, ...)
+            "--strict-mcp-config", "--mcp-config", self._mcp_config_path,
+            "--allowedTools", "mcp__jarvis",    # only Jarvis's own tools
+            "--permission-mode", "dontAsk",
+            "--no-session-persistence",
+            "--disable-slash-commands",
+        ]
+        self._proc = None
+        self._events: queue.Queue = queue.Queue()
+        self._stderr: list[str] = []
+        self._fresh = True  # next message is the first this process sees
+        atexit.register(self.close)
+
+    def _start(self) -> None:
+        env = os.environ.copy()
+        # If an API key is visible, Claude Code bills it instead of using the subscription.
+        for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE"):
+            env.pop(var, None)
+        workdir = os.path.join(tempfile.gettempdir(), "jarvis-claude-code")
+        os.makedirs(workdir, exist_ok=True)
+        self._proc = subprocess.Popen(
+            self._cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace", env=env, cwd=workdir, bufsize=1,
+        )
+        self._events = queue.Queue()
+        self._stderr = []
+        self._fresh = True
+        proc, events = self._proc, self._events
+
+        def pump_stdout():
+            for line in proc.stdout:
+                try:
+                    events.put(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+            events.put(None)  # process ended
+
+        def pump_stderr():
+            for line in proc.stderr:
+                self._stderr.append(line)
+
+        threading.Thread(target=pump_stdout, daemon=True).start()
+        threading.Thread(target=pump_stderr, daemon=True).start()
+
+    def warm_up(self) -> None:
+        if self._proc is None or self._proc.poll() is not None:
+            self._start()
+
+    def close(self) -> None:
+        if self._proc and self._proc.poll() is None:
+            self._proc.kill()
+
+    def ask(self, history: list[dict], confirm) -> str:
+        self.warm_up()
+        self.bridge.confirm = confirm
+        text = _build_prompt(history) if self._fresh else history[-1]["content"]
+        message = json.dumps({"type": "user", "message": {"role": "user", "content": (
+            f"[Current time: {datetime.now():%A, %B %d, %Y, %I:%M %p}]\n{text}")}}) + "\n"
+        try:
+            self._proc.stdin.write(message)
+            self._proc.stdin.flush()
+        except OSError:
+            # The process died between turns: start over, replaying history.
+            self._start()
+            return self.ask(history, confirm)
+        self._fresh = False
+
+        while True:
+            try:
+                event = self._events.get(timeout=300)
+            except queue.Empty:
+                self.close()
+                raise BackendError("That took too long, sir. Please try again.")
+            if event is None:
+                detail = "".join(self._stderr).strip() or "Claude Code exited."
+                self._proc = None
+                raise _error_for(detail)
+            if event.get("type") == "result":
+                if event.get("is_error"):
+                    raise _error_for(str(event.get("result") or event.get("subtype")))
+                return str(event.get("result", "")).strip()
 
 
-def _start_bridge() -> None:
-    global _bridge, _mcp_config_path
-    from tools.bridge import ToolBridge
-
-    _bridge = ToolBridge()
-    config = {"mcpServers": {"jarvis": {
-        "command": sys.executable,
-        "args": [os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")],
-        "env": {"JARVIS_BRIDGE_URL": _bridge.url, "JARVIS_BRIDGE_TOKEN": _bridge.token},
-    }}}
-    fd, _mcp_config_path = tempfile.mkstemp(prefix="jarvis-mcp-", suffix=".json")
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(config, f)
+def _error_for(detail: str) -> BackendError:
+    print(f"[claude code] {detail[:500]}")
+    lowered = detail.lower()
+    if "login" in lowered or "auth" in lowered:
+        return BackendError("Claude Code isn't signed in, sir. Run claude in a terminal and use slash login.")
+    if "limit" in lowered:
+        return BackendError("I've hit the subscription's usage limit, sir. It should reset soon.")
+    return BackendError("Claude Code returned an error, sir. The details are on screen.")
 
 
 def _build_prompt(history: list[dict]) -> str:
-    """`claude -p` is stateless here (no saved sessions), so recent turns are replayed as a transcript."""
+    """A fresh Claude Code process knows nothing, so recent turns are replayed as a transcript."""
     recent = history[-SUBSCRIPTION_HISTORY_TURNS:]
     *earlier, latest = recent
     if not earlier:
@@ -114,54 +220,17 @@ def _build_prompt(history: list[dict]) -> str:
     return f"Conversation so far:\n{transcript}\n\nThe user now says:\n{latest['content']}"
 
 
-def _think_claude_code(conversation_history: list[dict], system: str, confirm) -> str:
-    claude = shutil.which("claude")
-    if not claude:
-        raise BackendError("I can't find Claude Code on this PC, sir. Please install it or switch to API mode.")
-    if _bridge is None:
-        _start_bridge()
-    _bridge.confirm = confirm
+_session = None
 
-    env = os.environ.copy()
-    # If an API key is visible, Claude Code bills it instead of using the subscription.
-    for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE"):
-        env.pop(var, None)
 
-    cmd = [
-        claude, "-p",
-        "--output-format", "json",
-        "--model", os.environ.get("JARVIS_MODEL", "sonnet"),
-        "--effort", os.environ.get("JARVIS_EFFORT", "low"),
-        "--system-prompt", system,
-        "--tools", "",                      # no built-in Claude Code tools (Bash, Edit, ...)
-        "--strict-mcp-config", "--mcp-config", _mcp_config_path,
-        "--allowedTools", "mcp__jarvis",    # only Jarvis's own tools
-        "--permission-mode", "dontAsk",
-        "--no-session-persistence",
-        "--disable-slash-commands",
-    ]
-    workdir = os.path.join(tempfile.gettempdir(), "jarvis-claude-code")
-    os.makedirs(workdir, exist_ok=True)
-    try:
-        proc = subprocess.run(
-            cmd, input=_build_prompt(conversation_history), capture_output=True,
-            text=True, encoding="utf-8", errors="replace", env=env, cwd=workdir, timeout=300,
-        )
-    except subprocess.TimeoutExpired:
-        raise BackendError("That took too long, sir. Please try again.")
+def _get_session() -> ClaudeCodeSession:
+    global _session
+    if _session is None:
+        _session = ClaudeCodeSession()
+    return _session
 
-    try:
-        result = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        result = {"is_error": True, "result": (proc.stdout + proc.stderr).strip()}
 
-    if proc.returncode != 0 or result.get("is_error"):
-        detail = str(result.get("result") or proc.stderr).strip()
-        print(f"[claude code] {detail[:500]}")
-        lowered = detail.lower()
-        if "login" in lowered or "auth" in lowered:
-            raise BackendError("Claude Code isn't signed in, sir. Run claude in a terminal and use slash login.")
-        if "limit" in lowered:
-            raise BackendError("I've hit the subscription's usage limit, sir. It should reset soon.")
-        raise BackendError("Claude Code returned an error, sir. The details are on screen.")
-    return str(result.get("result", "")).strip()
+def warm_up() -> None:
+    """Start the backend early so the first reply isn't slowed by start-up."""
+    if BACKEND == "subscription":
+        _get_session().warm_up()

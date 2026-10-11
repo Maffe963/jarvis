@@ -53,7 +53,11 @@ def _match_app(name: str) -> dict | None:
 
 
 def open_app(name: str) -> str:
+    global _start_apps
     app = _match_app(name)
+    if not app:
+        _start_apps = None  # maybe installed since the list was read; look again
+        app = _match_app(name)
     if not app:
         return f"No installed app matching '{name}'."
     subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{app['AppID']}"])
