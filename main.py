@@ -42,11 +42,25 @@ def is_yes(answer: str) -> bool:
     return bool(words & YES_WORDS) or any(p in answer for p in YES_PHRASES)
 
 
-def respond(history: list[dict], user_text: str, confirm) -> tuple[list[dict], str]:
-    """Run one turn. On failure the user's turn is dropped so the history stays valid."""
+def respond(history: list[dict], user_text: str, confirm, say) -> tuple[list[dict], str]:
+    """Run one turn. On failure the user's turn is dropped so the history stays valid.
+
+    `say(text)` delivers the instant "Yes sir, opening Spotify." when the first tool starts. The returned
+    response is only what's left to say after that, and may be empty.
+    """
     history = add_turn(history, "user", user_text)
+    acknowledged: list[str] = []
+
+    def acknowledge(phrase: str) -> None:
+        if not acknowledged:  # once per request, even if several tools run
+            acknowledged.append(f"Yes sir, {phrase}.")
+            say(acknowledged[0])
+
     try:
-        response = think(history, confirm)
+        response = think(history, confirm, acknowledge)
+        response = response.replace("[done]", "").strip()
+        if not response and not acknowledged:
+            response = "Done, sir."
     except BackendError as e:
         history.pop()
         return history, str(e)
@@ -63,7 +77,7 @@ def respond(history: list[dict], user_text: str, confirm) -> tuple[list[dict], s
         history.pop()
         print(f"[error] {e}")
         return history, "The server returned an error, sir. Please try again."
-    history = add_turn(history, "assistant", response)
+    history = add_turn(history, "assistant", " ".join(acknowledged + [response]).strip())
     save_history(history)
     return history, response
 
@@ -85,8 +99,11 @@ def run_text() -> None:
             if user_input.lower().strip(" .!") in EXIT_PHRASES:
                 print("Jarvis: Goodbye, sir.")
                 break
-            history, response = respond(history, user_input, confirm_text)
-            print(f"Jarvis: {response}\n")
+            history, response = respond(history, user_input, confirm_text,
+                                        lambda text: print(f"Jarvis: {text}"))
+            if response:
+                print(f"Jarvis: {response}")
+            print()
     except KeyboardInterrupt:
         print("\nJarvis: Shutting down, sir.")
 
@@ -100,6 +117,11 @@ def run_voice() -> None:
     from voice import tts
     from voice.tts import speak
     from voice.wake_word import listen_for_wake_word
+
+    def acknowledge_aloud(text: str) -> None:
+        # In the background, so the command runs while Jarvis is saying "Yes sir, ...".
+        print(f"Jarvis: {text}")
+        threading.Thread(target=speak, args=(text,), daemon=True).start()
 
     def speak_until_woken(text: str) -> bool:
         """Speak, but stop the moment someone says 'hey Jarvis'. True if that happened."""
@@ -197,11 +219,12 @@ def run_voice() -> None:
             if said in CANCEL_PHRASES:
                 continue  # e.g. "hey Jarvis... stop" just to cut it off
 
-            history, response = respond(history, heard, confirm_voice)
-            print(f"Jarvis: {response}\n")
-            woken = speak_until_woken(response)
-            if woken:
-                print("[interrupted]")
+            history, response = respond(history, heard, confirm_voice, acknowledge_aloud)
+            if response:
+                print(f"Jarvis: {response}\n")
+                woken = speak_until_woken(response)
+                if woken:
+                    print("[interrupted]")
     except KeyboardInterrupt:
         print("\nJarvis: Shutting down, sir.")
 

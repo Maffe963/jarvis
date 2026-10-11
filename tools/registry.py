@@ -91,13 +91,51 @@ TOOL_MAP = {
 }
 
 
-def run_tool(name: str, inputs: dict, confirm=None) -> str:
+def _duration(seconds) -> str:
+    seconds = int(seconds or 0)
+    for size, unit in ((3600, "hour"), (60, "minute"), (1, "second")):
+        if seconds >= size and seconds % size == 0 or size == 1:
+            n = seconds // size
+            return f"{n} {unit}{'' if n == 1 else 's'}"
+
+
+def ack_phrase(name: str, inputs: dict) -> str:
+    """What Jarvis says it's doing when a tool starts, e.g. "opening Spotify"."""
+    action = inputs.get("action")
+    phrases = {
+        "open_app": lambda: f"opening {inputs.get('name', 'that')}",
+        "close_app": lambda: f"closing {inputs.get('name', 'that')}",
+        "focus_window": lambda: f"switching to {inputs.get('title', 'that window')}",
+        "show_desktop": lambda: "showing the desktop",
+        "open_url": lambda: "opening that now",
+        "media_control": lambda: {"play_pause": "toggling playback", "next": "skipping ahead",
+                                  "previous": "going back a track", "stop": "stopping playback"}.get(action, "on it"),
+        "volume": lambda: {"set": f"setting the volume to {inputs.get('level')} percent",
+                           "up": "turning it up", "down": "turning it down",
+                           "mute": "muting", "unmute": "unmuting"}.get(action, "checking now"),
+        "set_timer": lambda: f"setting a timer for {_duration(inputs.get('seconds'))}",
+        "set_reminder": lambda: "setting that reminder",
+        "cancel_reminder": lambda: "cancelling that reminder",
+        "power": lambda: {"lock": "locking the computer", "sleep": "putting the computer to sleep",
+                          "restart": "restarting the computer", "shutdown": "shutting down",
+                          "sign_out": "signing you out"}.get(action, "on it"),
+        "web_search": lambda: "looking that up",
+        "write_file": lambda: "saving that",
+        "run_powershell": lambda: "running that",
+    }
+    return phrases.get(name, lambda: "checking now")()
+
+
+def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None) -> str:
+    """Run a tool. `confirm(question) -> bool` gates risky ones; `acknowledge(phrase)` announces it starting."""
     func = TOOL_MAP.get(name)
     if not func:
         return f"Unknown tool: {name}"
     question = needs_confirmation(name, inputs)
     if question and not (confirm and confirm(question)):
         return "The user declined this action. Do not retry it."
+    if acknowledge:
+        acknowledge(ack_phrase(name, inputs))
     try:
         result = func(**inputs)
         return str(result)

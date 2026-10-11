@@ -15,7 +15,8 @@ from tools.registry import TOOLS, run_tool
 class ToolBridge:
     def __init__(self) -> None:
         self.token = secrets.token_urlsafe(32)
-        self.confirm = None  # set by brain.py before each turn
+        self.confirm = None      # set by brain.py before each turn
+        self.acknowledge = None  # likewise
         self._lock = threading.Lock()  # one tool (and one confirmation prompt) at a time
         bridge = self
 
@@ -32,7 +33,7 @@ class ToolBridge:
                     return
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
                 with bridge._lock:
-                    result = run_tool(body["name"], body.get("input") or {}, bridge.confirm)
+                    result = run_tool(body["name"], body.get("input") or {}, bridge.confirm, bridge.acknowledge)
                 self._reply({"result": result})
 
             def _reply(self, data) -> None:

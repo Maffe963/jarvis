@@ -18,7 +18,12 @@ system status, power, timers, files, web search, and PowerShell as a last resort
 When asked to do something, just do it with the tools rather than explaining how.
 Risky actions are confirmed with the user automatically; if one is declined, acknowledge it and move on.
 Your replies are spoken aloud: keep them to one or two short sentences, with no markdown, lists, or URLs.
-Address the user as "sir" occasionally for character."""
+When you use a tool, Jarvis automatically says "Yes sir, <what you're doing>" aloud as it starts (for
+example "Yes sir, opening Spotify."), so never repeat or re-confirm the action afterwards. If the action
+simply worked and you have nothing new to add, reply with exactly: [done]
+If the tool returned information the user wanted, give just that information briefly ("CPU is at twelve
+percent."). If it failed or the user declined it, say so plainly. For questions and conversation that
+need no tool, just answer naturally, using "sir" now and then."""
 
 # "api" bills an Anthropic API key per request; "subscription" goes through Claude Code (`claude -p`)
 # signed in with your Claude plan, and counts against that plan's usage limits.
@@ -30,12 +35,12 @@ class BackendError(Exception):
     """A failure with a message fit to say to the user."""
 
 
-def think(conversation_history: list[dict], confirm=None) -> str:
+def think(conversation_history: list[dict], confirm=None, acknowledge=None) -> str:
     """Run one turn. `confirm(question) -> bool` is asked before risky tool calls; without it they're refused."""
     if BACKEND == "subscription":
-        return _get_session().ask(conversation_history, confirm)
+        return _get_session().ask(conversation_history, confirm, acknowledge)
     system = f"{SYSTEM_PROMPT}\n\nCurrent date and time: {datetime.now():%A, %B %d, %Y, %I:%M %p}."
-    return _think_api(conversation_history, system, confirm)
+    return _think_api(conversation_history, system, confirm, acknowledge)
 
 
 # ---------- API backend ----------
@@ -43,7 +48,7 @@ def think(conversation_history: list[dict], confirm=None) -> str:
 _client = None
 
 
-def _think_api(conversation_history: list[dict], system: str, confirm) -> str:
+def _think_api(conversation_history: list[dict], system: str, confirm, acknowledge) -> str:
     global _client
     from anthropic import Anthropic
 
@@ -69,7 +74,7 @@ def _think_api(conversation_history: list[dict], system: str, confirm) -> str:
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
-                    result = run_tool(block.name, block.input, confirm)
+                    result = run_tool(block.name, block.input, confirm, acknowledge)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -167,9 +172,10 @@ class ClaudeCodeSession:
         if self._proc and self._proc.poll() is None:
             self._proc.kill()
 
-    def ask(self, history: list[dict], confirm) -> str:
+    def ask(self, history: list[dict], confirm, acknowledge=None) -> str:
         self.warm_up()
         self.bridge.confirm = confirm
+        self.bridge.acknowledge = acknowledge
         text = _build_prompt(history) if self._fresh else history[-1]["content"]
         message = json.dumps({"type": "user", "message": {"role": "user", "content": (
             f"[Current time: {datetime.now():%A, %B %d, %Y, %I:%M %p}]\n{text}")}}) + "\n"
@@ -179,7 +185,7 @@ class ClaudeCodeSession:
         except OSError:
             # The process died between turns: start over, replaying history.
             self._start()
-            return self.ask(history, confirm)
+            return self.ask(history, confirm, acknowledge)
         self._fresh = False
 
         while True:
