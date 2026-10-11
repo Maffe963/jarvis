@@ -1,11 +1,29 @@
+import json
 import os
+import re
 
 MAX_READ_CHARS = 20000
 _DEFAULT_FOLDERS = ("Desktop", "Documents", "Downloads", "Pictures", "Music", "Videos")
+GRANTS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "memory", "file_access.json")
+# Always confirmed, even inside allowed folders: secrets, keys, and Windows itself.
+ALWAYS_ASK = re.compile(
+    r"(\\\.ssh\\|\\\.aws\\|\\\.gnupg\\|\\\.env$|\\\.env\.|\.pem$|\.key$|\.pfx$|\.p12$|\.kdbx$|id_rsa|id_ed25519"
+    r"|^[a-z]:\\windows(\\|$)|\\appdata\\(local|roaming)\\microsoft\\(credentials|protect|vault)\\)",
+    re.IGNORECASE,
+)
+
+
+def _grants() -> list[str]:
+    try:
+        with open(GRANTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
 
 
 def allowed_folders() -> list[str]:
-    """Folders Jarvis may use without asking: JARVIS_FILE_FOLDERS (separated by ';'), else the usual user folders."""
+    """Folders Jarvis may use without asking: JARVIS_FILE_FOLDERS (separated by ';') or the usual user
+    folders, plus any the user granted by voice (grant_folder_access)."""
     configured = os.environ.get("JARVIS_FILE_FOLDERS", "").strip()
     if configured:
         folders = [os.path.expanduser(p.strip()) for p in configured.split(";") if p.strip()]
@@ -13,7 +31,37 @@ def allowed_folders() -> list[str]:
         home = os.path.expanduser("~")
         folders = [os.path.join(base, name) for base in (home, os.path.join(home, "OneDrive"))
                    for name in _DEFAULT_FOLDERS]
-    return [os.path.realpath(f) for f in folders if os.path.isdir(f)]
+    return [os.path.realpath(f) for f in folders + _grants() if os.path.isdir(f)]
+
+
+def grant_folder_access(folder: str) -> str:
+    real = resolve(folder)
+    if not os.path.isdir(real):
+        return f"There's no folder at {real}."
+    grants = _grants()
+    if real in grants:
+        return f"Jarvis already has access to {real}."
+    with open(GRANTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(grants + [real], f, indent=2)
+    return f"Jarvis can now use files in {real} without asking (secrets like .env files and keys still ask)."
+
+
+def revoke_folder_access(folder: str) -> str:
+    grants = _grants()
+    real = resolve(folder)
+    keep = [g for g in grants if os.path.normcase(g) != os.path.normcase(real)]
+    if len(keep) == len(grants):
+        listed = ", ".join(grants) or "none"
+        return f"{real} wasn't one of the folders you granted. Granted: {listed}."
+    with open(GRANTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(keep, f, indent=2)
+    return f"Jarvis will ask again before using files in {real}."
+
+
+def list_folder_access() -> str:
+    granted = _grants()
+    usual = [f for f in allowed_folders() if f not in granted]
+    return ("Usual folders: " + ", ".join(usual) + "\nGranted by you: " + (", ".join(granted) or "none"))
 
 
 def resolve(path: str) -> str:
@@ -32,10 +80,16 @@ def resolve(path: str) -> str:
     return os.path.realpath(path)  # follows links and "..", so they can't escape a folder
 
 
+def is_sensitive(path: str) -> bool:
+    return bool(ALWAYS_ASK.search(os.path.normcase(resolve(path))))
+
+
 def is_allowed(path: str) -> bool:
     real = os.path.normcase(resolve(path))
+    if is_sensitive(path):
+        return False
     for folder in allowed_folders():
-        folder = os.path.normcase(folder)
+        folder = os.path.normcase(folder).rstrip(os.sep)  # "E:\" -> "E:" so the whole drive matches
         if real == folder or real.startswith(folder + os.sep):
             return True
     return False

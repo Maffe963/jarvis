@@ -275,11 +275,18 @@ def needs_confirmation(name: str, inputs: dict) -> str | None:
         return f"{inputs.get('action', '').replace('_', ' ').capitalize()} the computer?"
     if name == "run_powershell":
         return f"Run this command: {inputs.get('command')}?"
+    if name == "grant_folder_access":
+        folder = files.resolve(inputs.get("folder", ""))
+        whole_drive = os.path.splitdrive(folder)[1] in ("\\", "")
+        return (f"Let me read and change files in {folder}{' (your whole ' + folder[:2] + ' drive)' if whole_drive else ''} "
+                "from now on without asking?")
     if name in ("read_file", "write_file", "list_files"):
         path = inputs.get("directory", ".") if name == "list_files" else inputs.get("path", "")
         if not files.is_allowed(path):
             verb = {"read_file": "Read", "write_file": "Write to", "list_files": "Look in"}[name]
-            return f"{verb} {files.resolve(path)}? It's outside your usual folders."
+            why = ("It may contain passwords or keys." if files.is_sensitive(path)
+                   else "It's outside your usual folders.")
+            return f"{verb} {files.resolve(path)}? {why}"
         if name == "write_file" and os.path.exists(files.resolve(path)):
             return f"Overwrite {files.resolve(path)}?"
     return None

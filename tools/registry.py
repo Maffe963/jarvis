@@ -1,6 +1,7 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
 from tools import desktop, finder, lists, messaging, projects, reminders, weather
-from tools.files import list_files, read_file, write_file
+from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
+                         revoke_folder_access, write_file)
 from tools.search import web_search
 from tools.system import SYSTEM_TOOL_MAP, SYSTEM_TOOLS, needs_confirmation
 
@@ -51,6 +52,22 @@ TOOLS = [
         }
     },
     {
+        "name": "grant_folder_access",
+        "description": "Let Jarvis read and change files in a folder (or a whole drive like 'E:\\') from now on "
+                       "without asking each time. Only when the user explicitly says to; they confirm it.",
+        "input_schema": {"type": "object", "properties": {"folder": {"type": "string"}}, "required": ["folder"]}
+    },
+    {
+        "name": "revoke_folder_access",
+        "description": "Go back to asking before using files in a folder the user granted earlier.",
+        "input_schema": {"type": "object", "properties": {"folder": {"type": "string"}}, "required": ["folder"]}
+    },
+    {
+        "name": "list_folder_access",
+        "description": "Which folders Jarvis can use without asking.",
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
         "name": "set_reminder",
         "description": "Remind the user at a specific clock time (Jarvis says it aloud then). Use for "
                        "'remind me at 3pm...' or 'tomorrow morning...'. For 'in N minutes' use set_timer.",
@@ -84,6 +101,9 @@ TOOL_MAP = {
     "read_file": read_file,
     "write_file": write_file,
     "list_files": list_files,
+    "grant_folder_access": grant_folder_access,
+    "revoke_folder_access": revoke_folder_access,
+    "list_folder_access": list_folder_access,
     "set_reminder": reminders.set_reminder,
     "list_reminders": reminders.list_reminders,
     "cancel_reminder": reminders.cancel_reminder,
@@ -140,6 +160,8 @@ def ack_phrase(name: str, inputs: dict) -> str:
         "set_clipboard": lambda: "copying that",
         "look_at_screen": lambda: "taking a look",
         "run_project_command": lambda: f"running {inputs.get('command', 'that')}",
+        "grant_folder_access": lambda: "granting that access",
+        "revoke_folder_access": lambda: "removing that access",
         "quit_jarvis": lambda: "closing Jarvis completely" if inputs.get("completely") else "going on standby",
     }
     return phrases.get(name, lambda: "checking now")()
