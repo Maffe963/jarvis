@@ -1,5 +1,6 @@
+import gc
 import os
-
+import threading
 from collections import deque
 
 import numpy as np
@@ -12,13 +13,23 @@ SPEECH_START_BLOCKS = 3  # 240 ms of sound before it counts as speech
 PRE_ROLL_BLOCKS = 6      # keep 480 ms from before speech was detected
 
 _model = None
+_model_lock = threading.Lock()  # loaded in the background when waking from standby
 
 
 def _get_model() -> WhisperModel:
     global _model
-    if _model is None:
-        _model = WhisperModel("base.en", device="cpu", compute_type="int8")
-    return _model
+    with _model_lock:
+        if _model is None:
+            _model = WhisperModel("base.en", device="cpu", compute_type="int8")
+        return _model
+
+
+def unload_model() -> None:
+    """Free the speech model's memory (standby). It reloads on next use."""
+    global _model
+    with _model_lock:
+        _model = None
+    gc.collect()
 
 
 def record_until_silence(

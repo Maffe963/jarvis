@@ -241,12 +241,16 @@ def run_powershell(command: str) -> str:
 
 # ---------- timers ----------
 
-quit_requested = threading.Event()  # main.py exits once the current reply is done
+quit_requested = threading.Event()     # main.py exits once the current reply is done
+standby_requested = threading.Event()  # main.py goes on standby once the current reply is done
 
 
-def quit_jarvis() -> str:
-    quit_requested.set()
-    return "Jarvis will close after this reply. The computer stays on."
+def quit_jarvis(completely: bool = False) -> str:
+    if completely:
+        quit_requested.set()
+        return "Jarvis will close completely after this reply. The computer stays on."
+    standby_requested.set()
+    return "Jarvis will go on standby after this reply (only 'hey Jarvis' keeps listening). Don't say goodbye; Jarvis announces it."
 
 
 def set_timer(seconds: int, label: str = "") -> str:
@@ -314,7 +318,9 @@ SYSTEM_TOOLS = [
             "The user will be asked to confirm.",
             {"command": {"type": "string"}}, ["command"]),
     _schema("quit_jarvis", "Close Jarvis itself (this assistant), leaving the computer on. Use when the user "
-            "wants Jarvis to quit, close, stop running or turn itself off."),
+            "wants Jarvis to quit, close, stop running or turn itself off. By default Jarvis goes on standby "
+            "and wakes again on 'hey Jarvis'; set completely only if they say to quit completely / for good.",
+            {"completely": {"type": "boolean"}}),
     _schema("set_timer", "Set a countdown timer; Jarvis announces when it finishes.",
             {"seconds": {"type": "integer"}, "label": {"type": "string"}}, ["seconds"]),
 ]

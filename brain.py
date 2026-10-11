@@ -238,6 +238,12 @@ def _get_session() -> ClaudeCodeSession:
     return _session
 
 
+def standby_backend() -> None:
+    """Stop Claude Code to free memory; the next request starts it again and replays recent history."""
+    if _session is not None:
+        _session.close()
+
+
 def warm_up() -> None:
     """Start the backend early so the first reply isn't slowed by start-up."""
     if BACKEND == "subscription":

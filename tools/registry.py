@@ -138,7 +138,7 @@ def ack_phrase(name: str, inputs: dict) -> str:
         "clear_list": lambda: "deleting that list",
         "set_clipboard": lambda: "copying that",
         "look_at_screen": lambda: "taking a look",
-        "quit_jarvis": lambda: "closing Jarvis",
+        "quit_jarvis": lambda: "closing Jarvis completely" if inputs.get("completely") else "going on standby",
     }
     return phrases.get(name, lambda: "checking now")()
 

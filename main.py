@@ -9,26 +9,42 @@ load_dotenv()
 
 import anthropic
 
-from brain import BackendError, think, warm_up
+from brain import BackendError, standby_backend, think, warm_up
 from memory.conversation import add_turn, load_history, save_history
 from tools import reminders
-from tools.system import quit_requested, set_announcer
+from tools.system import quit_requested, set_announcer, standby_requested
 
 # Close Jarvis itself (never the computer). Bare "shut down" is left to Claude, which asks which one you mean.
+# In voice mode these put Jarvis on standby (only the wake word keeps running); in text mode they quit.
 EXIT_PHRASES = {
     "quit", "exit", "goodbye", "bye", "goodbye jarvis", "bye jarvis", "quit jarvis", "exit jarvis",
     "close jarvis", "shut down jarvis", "shutdown jarvis", "turn off jarvis", "jarvis off",
     "close yourself", "quit yourself", "exit yourself", "shut yourself down", "turn yourself off",
+    "standby", "go on standby", "go into standby",
+}
+# These close Jarvis entirely, so "hey Jarvis" won't work until it's started again.
+FULL_QUIT_PHRASES = {
+    "quit completely", "exit completely", "quit jarvis completely", "exit jarvis completely",
+    "close jarvis completely", "shut down jarvis completely", "turn off jarvis completely",
+    "fully quit", "fully quit jarvis", "fully close jarvis", "quit for real", "close completely",
 }
 
 
-def is_exit(text: str) -> bool:
+def _normalized(text: str) -> str:
     words = re.sub(r"[^a-z' ]", " ", text.lower()).split()
     while words and words[0] in ("please", "ok", "okay", "now"):
         words.pop(0)
     while words and words[-1] in ("please", "now", "sir"):
         words.pop()
-    return " ".join(words) in EXIT_PHRASES
+    return " ".join(words)
+
+
+def is_exit(text: str) -> bool:
+    return _normalized(text) in EXIT_PHRASES or is_full_quit(text)
+
+
+def is_full_quit(text: str) -> bool:
+    return _normalized(text) in FULL_QUIT_PHRASES
 SLEEP_PHRASES = ("go to sleep", "that's all", "that's it", "that will be all", "thanks jarvis", "thank you jarvis")
 CANCEL_PHRASES = ("stop", "cancel", "never mind", "nevermind", "shut up", "quiet", "nothing")
 # Whisper tends to "hear" these in background noise; on their own they're not requests.
@@ -120,8 +136,8 @@ def run_text() -> None:
             if response:
                 print(f"Jarvis: {response}")
             print()
-            if quit_requested.is_set():
-                break
+            if quit_requested.is_set() or standby_requested.is_set():
+                break  # no wake word in text mode, so standby just quits
     except KeyboardInterrupt:
         print("\nJarvis: Shutting down, sir.")
 
@@ -194,8 +210,25 @@ def run_voice() -> None:
         print("[conversation over; say 'hey Jarvis' to start again]")
         beep(440)
 
+    def go_on_standby(already_announced: bool = False) -> None:
+        """Free Claude Code and the speech model; only the small wake-word detector keeps running."""
+        nonlocal in_conversation, misfires, on_standby
+        speak("Say hey Jarvis when you need me." if already_announced
+              else "Going on standby, sir. Say hey Jarvis when you need me.")
+        standby_backend()
+        stt.unload_model()
+        in_conversation, misfires, on_standby = False, 0, True
+        print("[standby] say 'hey Jarvis' to wake me; timers and reminders still work")
+        beep(440)
+
+    def wait_for_speech_to_finish() -> None:
+        time.sleep(0.3)
+        with tts._lock:  # e.g. "Yes sir, closing Jarvis." is still being said in the background
+            pass
+
     woken = False            # woken by interrupting Jarvis mid-sentence
     in_conversation = False  # after "hey Jarvis", keep listening without it until things go quiet
+    on_standby = False       # Claude Code and the speech model are unloaded until the wake word
     misfires = 0             # recordings in a row that turned out to be just noise
     try:
         while True:
@@ -214,6 +247,11 @@ def run_voice() -> None:
                 listen_for_wake_word()
                 print("[awake] listening...")
                 beep(880)
+                if on_standby:
+                    # Reload while you're still talking, so it's ready by the time you finish.
+                    on_standby = False
+                    threading.Thread(target=warm_up, daemon=True).start()
+                    threading.Thread(target=stt._get_model, daemon=True).start()
                 audio = record_until_silence()
             in_conversation = FOLLOWUP_SECONDS != 0
 
@@ -228,9 +266,12 @@ def run_voice() -> None:
             print(f"You: {heard}")
 
             said = heard.lower().strip(" .!?,")
-            if is_exit(heard):
+            if is_full_quit(heard):
                 speak("Goodbye, sir.")
                 break
+            if is_exit(heard):
+                go_on_standby()
+                continue
             if said in SLEEP_PHRASES:
                 speak("Very good, sir.")
                 end_conversation()
@@ -245,10 +286,12 @@ def run_voice() -> None:
                 if woken:
                     print("[interrupted]")
             if quit_requested.is_set():
-                time.sleep(0.3)
-                with tts._lock:  # let "Yes sir, closing Jarvis." finish before exiting
-                    pass
+                wait_for_speech_to_finish()
                 break
+            if standby_requested.is_set():
+                standby_requested.clear()
+                wait_for_speech_to_finish()
+                go_on_standby(already_announced=True)  # "Yes sir, going on standby." was just said
     except KeyboardInterrupt:
         print("\nJarvis: Shutting down, sir.")
 
