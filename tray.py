@@ -1,19 +1,23 @@
-"""Run Jarvis in the background with an icon by the clock (this is what starts at Windows sign-in).
+"""Run Jarvis in the background with an icon by the clock (this is what the Jarvis shortcut starts).
 
     .venv/Scripts/pythonw.exe main.py --tray
 
-Output goes to memory/jarvis.log instead of a console window.
+Output goes to memory/jarvis.log instead of a console window. Starting Jarvis while it's already running
+turns the running one off, so the shortcut works as an on/off switch.
 """
 import ctypes
 import os
 import sys
+import threading
 import traceback
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(ROOT, "memory", "jarvis.log")
 MAX_LOG_BYTES = 1_000_000
+OFF_SWITCH = "Local\\JarvisTurnOff"
 
 _mutex = None
+_icon = None
 
 
 def claim_single_instance() -> bool:
@@ -22,6 +26,40 @@ def claim_single_instance() -> bool:
     kernel32 = ctypes.windll.kernel32
     _mutex = kernel32.CreateMutexW(None, False, "Local\\JarvisVoiceAssistant")
     return kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+
+
+def turn_off_running_jarvis() -> None:
+    """Ask the Jarvis that's already running to shut down (it says 'Jarvis offline' and exits)."""
+    import win32event
+
+    win32event.SetEvent(win32event.CreateEvent(None, False, False, OFF_SWITCH))
+
+
+def listen_for_off_switch() -> None:
+    """Shut down when another start of Jarvis asks this one to turn off."""
+    import win32event
+
+    event = win32event.CreateEvent(None, False, False, OFF_SWITCH)
+
+    def wait():
+        win32event.WaitForSingleObject(event, win32event.INFINITE)
+        turn_off()
+
+    threading.Thread(target=wait, daemon=True).start()
+
+
+def turn_off() -> None:
+    from voice import tts
+
+    print("[turned off]")
+    tts.stop()
+    try:
+        tts.speak("Jarvis offline.")
+    except Exception:
+        pass
+    if _icon is not None:
+        _icon.stop()
+    _shutdown()
 
 
 def _icon_image(muted: bool):
@@ -52,10 +90,12 @@ def _shutdown() -> None:
 
 
 def run(run_voice) -> None:
+    global _icon
     if not claim_single_instance():
-        ctypes.windll.user32.MessageBoxW(None, "Jarvis is already running.", "Jarvis", 0x40)
+        turn_off_running_jarvis()  # the shortcut is an on/off switch
         return
     _redirect_output()
+    listen_for_off_switch()
 
     import pystray
 
@@ -72,8 +112,9 @@ def run(run_voice) -> None:
     icon = pystray.Icon("jarvis", _icon_image(False), "Jarvis", pystray.Menu(
         pystray.MenuItem("Mute microphone", toggle_mute, checked=lambda item: mic.muted.is_set()),
         pystray.MenuItem("Open log", lambda icon, item: os.startfile(LOG_FILE)),
-        pystray.MenuItem("Quit Jarvis", lambda icon, item: (icon.stop(), _shutdown())),
+        pystray.MenuItem("Turn Jarvis off", lambda icon, item: turn_off()),
     ))
+    _icon = icon
     icon.run_detached()
     try:
         run_voice()

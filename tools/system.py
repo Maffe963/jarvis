@@ -475,7 +475,8 @@ SYSTEM_TOOLS = [
             {"command": {"type": "string"}}, ["command"]),
     _schema("quit_jarvis", "Close Jarvis itself (this assistant), leaving the computer on. Use when the user "
             "wants Jarvis to quit, close, stop running or turn itself off. By default Jarvis goes on standby "
-            "and wakes again on 'hey Jarvis'; set completely only if they say to quit completely / for good.",
+            "and wakes again on 'hey Jarvis'. Set completely when they want it off (turn off / shut down / switch "
+            "off Jarvis, quit for good): then nothing keeps listening until they start Jarvis again.",
             {"completely": {"type": "boolean"}}),
     _schema("set_timer", "Set a countdown timer; Jarvis announces when it finishes.",
             {"seconds": {"type": "integer"}, "label": {"type": "string"}}, ["seconds"]),

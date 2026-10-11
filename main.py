@@ -20,15 +20,16 @@ from tools.system import quit_requested, set_announcer, standby_requested
 # In voice mode these put Jarvis on standby (only the wake word keeps running); in text mode they quit.
 EXIT_PHRASES = {
     "quit", "exit", "goodbye", "bye", "goodbye jarvis", "bye jarvis", "quit jarvis", "exit jarvis",
-    "close jarvis", "shut down jarvis", "shutdown jarvis", "turn off jarvis", "jarvis off",
-    "close yourself", "quit yourself", "exit yourself", "shut yourself down", "turn yourself off",
+    "close jarvis", "close yourself", "quit yourself", "exit yourself",
     "standby", "go on standby", "go into standby",
 }
-# These close Jarvis entirely, so "hey Jarvis" won't work until it's started again.
+# These turn Jarvis off entirely (nothing keeps listening), until it's started again.
 FULL_QUIT_PHRASES = {
     "quit completely", "exit completely", "quit jarvis completely", "exit jarvis completely",
     "close jarvis completely", "shut down jarvis completely", "turn off jarvis completely",
     "fully quit", "fully quit jarvis", "fully close jarvis", "quit for real", "close completely",
+    "shut down jarvis", "shutdown jarvis", "turn off jarvis", "turn jarvis off", "jarvis off",
+    "shut yourself down", "turn yourself off", "switch off", "switch yourself off", "power off jarvis",
 }
 
 
@@ -341,7 +342,7 @@ def run_voice() -> None:
 
             said = heard.lower().strip(" .!?,")
             if is_full_quit(heard):
-                speak("Goodbye, sir.")
+                speak("Jarvis offline.")
                 break
             if is_exit(heard):
                 go_on_standby()
@@ -386,6 +387,8 @@ if __name__ == "__main__":
         import tray
 
         if tray.claim_single_instance():
+            tray.listen_for_off_switch()
             run_voice()
         else:
-            print("Jarvis is already running (look for its icon by the clock).")
+            tray.turn_off_running_jarvis()
+            print("Jarvis was already running, so I've turned it off. Run this again to turn it back on.")

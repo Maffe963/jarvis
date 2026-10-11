@@ -37,7 +37,7 @@ def _make_shortcut(path: str) -> None:
         "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:J_LNK);"
         "$s.TargetPath = $env:J_TARGET; $s.Arguments = 'main.py --tray';"
         "$s.WorkingDirectory = $env:J_DIR; $s.IconLocation = $env:J_ICON;"
-        "$s.Description = 'Jarvis voice assistant'; $s.Save()"
+        "$s.Description = 'Jarvis: click to turn on, click again to turn off'; $s.Save()"
     )
     env = dict(os.environ, J_LNK=path, J_TARGET=PYTHONW, J_DIR=ROOT, J_ICON=ICON)
     subprocess.run(["powershell", "-NoProfile", "-Command", script], env=env, check=True)
