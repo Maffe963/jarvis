@@ -47,13 +47,6 @@ seconds of quiet, or when you say "that's all" or "go to sleep" (you'll hear a l
 Jarvis can also set reminders ("remind me tomorrow at 9 to email Professor Lee"). They're kept in
 `memory/reminders.json`, and any that came due while Jarvis was off are announced when it starts.
 
-## Finding files
-
-"Find my resume", "where's my tax return folder?", "open the most recent one", "search the E drive
-for Jarvis". Jarvis matches words in any order, using the Windows Search index for your usual folders
-(instant) and scanning other places directly (up to about 8 seconds). Searching outside your usual
-folders, and opening programs or scripts, are confirmed with you first.
-
 ## Email and Discord
 
 Jarvis can send and read Gmail and Discord ("email Mom that I'll be late", "any new emails?",
