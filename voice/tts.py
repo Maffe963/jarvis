@@ -1,11 +1,13 @@
 import os
+import tempfile
 import threading
+import wave
 
 import numpy as np
 import sounddevice as sd
 
-_engine = None
-_lock = threading.Lock()  # timers speak from background threads
+_lock = threading.Lock()  # timers and reminders speak from background threads
+_interrupted = threading.Event()
 
 
 def _elevenlabs_enabled() -> bool:
@@ -13,33 +15,58 @@ def _elevenlabs_enabled() -> bool:
     return bool(key) and not key.startswith("your_")
 
 
-def speak(text: str) -> None:
-    """Speak text aloud. Uses ElevenLabs if a key is configured, otherwise Windows' built-in voice."""
+def speak(text: str) -> bool:
+    """Speak text aloud; returns False if stop() cut it off.
+
+    Uses ElevenLabs if a key is configured, otherwise Windows' built-in voice. Either way the speech is
+    rendered to audio first and then played, so playback can be stopped part-way.
+    """
     if not text:
-        return
+        return True
     with _lock:
+        _interrupted.clear()
+        audio, rate = None, 0
         if _elevenlabs_enabled():
             try:
-                _speak_elevenlabs(text)
-                return
+                audio, rate = _render_elevenlabs(text)
             except Exception as e:
                 print(f"[tts] ElevenLabs failed ({e}); falling back to local voice")
-        _speak_local(text)
+        if audio is None:
+            audio, rate = _render_local(text)
+        if _interrupted.is_set():
+            return False
+        sd.play(audio, samplerate=rate)
+        sd.wait()  # returns early if stop() is called
+        return not _interrupted.is_set()
 
 
-def _speak_local(text: str) -> None:
-    global _engine
+def stop() -> None:
+    """Stop whatever is being said right now (safe to call from any thread)."""
+    _interrupted.set()
+    sd.stop()
+
+
+def _render_local(text: str) -> tuple[np.ndarray, int]:
     import pyttsx3
 
-    # A fresh engine per call avoids pyttsx3's known hang on repeated runAndWait().
-    _engine = pyttsx3.init()
-    _engine.setProperty("rate", 185)
-    _engine.say(text)
-    _engine.runAndWait()
-    _engine.stop()
+    fd, path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        # A fresh engine per call avoids pyttsx3's known hang on repeated runAndWait().
+        engine = pyttsx3.init()
+        engine.setProperty("rate", 185)
+        engine.save_to_file(text, path)
+        engine.runAndWait()
+        engine.stop()
+        with wave.open(path) as w:
+            rate, channels = w.getframerate(), w.getnchannels()
+            pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
+    finally:
+        os.remove(path)
+    return pcm.reshape(-1, channels), rate
 
 
-def _speak_elevenlabs(text: str) -> None:
+def _render_elevenlabs(text: str) -> tuple[np.ndarray, int]:
     from elevenlabs import ElevenLabs, VoiceSettings
 
     client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
@@ -54,6 +81,4 @@ def _speak_elevenlabs(text: str) -> None:
         voice_settings=VoiceSettings(stability=0.5, similarity_boost=0.75, style=0.0, use_speaker_boost=True),
         output_format="pcm_16000",
     )
-    pcm = np.frombuffer(b"".join(stream), dtype=np.int16)
-    sd.play(pcm, samplerate=16000)
-    sd.wait()
+    return np.frombuffer(b"".join(stream), dtype=np.int16), 16000

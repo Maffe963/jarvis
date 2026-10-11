@@ -1,4 +1,5 @@
 import os
+import threading
 
 import numpy as np
 
@@ -18,16 +19,20 @@ def _get_model():
     return _model
 
 
-def listen_for_wake_word(threshold: float | None = None) -> None:
-    """Block until someone says 'hey Jarvis'. Runs fully offline, no API key needed."""
+def listen_for_wake_word(threshold: float | None = None, stop: threading.Event | None = None) -> bool:
+    """Block until someone says 'hey Jarvis' (True) or `stop` is set (False). Fully offline."""
     if threshold is None:
         threshold = float(os.environ.get("JARVIS_WAKE_THRESHOLD", "0.5"))
     model = _get_model()
     model.reset()
     mic.flush()
-    print("Listening for 'hey Jarvis'...")
-    while True:
-        audio = (np.clip(mic.read(), -1, 1) * 32767).astype(np.int16)
-        scores = model.predict(audio)
+    if stop is None:
+        print("Listening for 'hey Jarvis'...")
+    while stop is None or not stop.is_set():
+        block = mic.read(timeout=0.2)
+        if block is None:
+            continue
+        scores = model.predict((np.clip(block, -1, 1) * 32767).astype(np.int16))
         if any(score >= threshold for score in scores.values()):
-            return
+            return True
+    return False

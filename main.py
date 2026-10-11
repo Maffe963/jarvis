@@ -12,6 +12,7 @@ from memory.conversation import add_turn, load_history, save_history
 from tools.system import set_announcer
 
 EXIT_PHRASES = ("quit", "exit", "goodbye", "go to sleep")
+CANCEL_PHRASES = ("stop", "cancel", "never mind", "nevermind", "shut up", "quiet", "that's all", "nothing")
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "confirm", "confirmed", "affirmative", "okay", "ok", "absolutely"}
 YES_PHRASES = ("do it", "go ahead", "go for it")
 NO_WORDS = {"no", "nope", "nah", "not", "don't", "dont", "cancel", "stop", "never", "wait", "negative"}
@@ -81,8 +82,26 @@ def run_voice() -> None:
 
     from voice import mic, select_microphone, stt, wake_word
     from voice.stt import record_until_silence, transcribe
+    from voice import tts
     from voice.tts import speak
     from voice.wake_word import listen_for_wake_word
+
+    def speak_until_woken(text: str) -> bool:
+        """Speak, but stop the moment someone says 'hey Jarvis'. True if that happened."""
+        done = threading.Event()
+        woken = threading.Event()
+
+        def watch():
+            if listen_for_wake_word(stop=done):
+                woken.set()
+                tts.stop()
+
+        watcher = threading.Thread(target=watch, daemon=True)
+        watcher.start()
+        speak(text)
+        done.set()
+        watcher.join()
+        return woken.is_set()
 
     def confirm_voice(question: str) -> bool:
         print(f"Jarvis: {question}")
@@ -108,9 +127,12 @@ def run_voice() -> None:
     print(f"Jarvis online (voice mode), listening on: {microphone}")
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")
+    woken = False  # already woken by interrupting Jarvis mid-sentence
     try:
         while True:
-            listen_for_wake_word()
+            if not woken:
+                listen_for_wake_word()
+            woken = False
             print("[awake] listening...")
             # Beep in the background so recording starts immediately.
             threading.Thread(target=winsound.Beep, args=(880, 120), daemon=True).start()
@@ -120,13 +142,18 @@ def run_voice() -> None:
                 continue
             print(f"You: {heard}")
 
-            if heard.lower().strip(" .!?") in EXIT_PHRASES:
+            said = heard.lower().strip(" .!?,")
+            if said in EXIT_PHRASES:
                 speak("Goodbye, sir.")
                 break
+            if said in CANCEL_PHRASES:
+                continue  # e.g. "hey Jarvis... stop" just to cut it off
 
             history, response = respond(history, heard, confirm_voice)
             print(f"Jarvis: {response}\n")
-            speak(response)
+            woken = speak_until_woken(response)
+            if woken:
+                print("[interrupted]")
     except KeyboardInterrupt:
         print("\nJarvis: Shutting down, sir.")
 

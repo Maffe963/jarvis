@@ -19,14 +19,17 @@ def _on_audio(indata, frames, time_info, status) -> None:
     _blocks.put(indata[:, 0].copy())
 
 
-def read() -> np.ndarray:
-    """Next 80 ms of float32 mono audio, opening the mic on first use."""
+def read(timeout: float | None = None) -> np.ndarray | None:
+    """Next 80 ms of float32 mono audio, opening the mic on first use. None if `timeout` passes first."""
     global _stream
     if _stream is None:
         _stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="float32",
                                  blocksize=BLOCK, callback=_on_audio)
         _stream.start()
-    return _blocks.get()
+    try:
+        return _blocks.get(timeout=timeout)
+    except queue.Empty:
+        return None
 
 
 def flush() -> None:
