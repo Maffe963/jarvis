@@ -25,6 +25,7 @@ YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "confirm", "confirmed", "affir
 YES_PHRASES = ("do it", "go ahead", "go for it")
 NO_WORDS = {"no", "nope", "nah", "not", "don't", "dont", "cancel", "stop", "never", "wait", "negative"}
 MAX_SPOKEN_QUESTION = 90
+MAX_SPOKEN_MESSAGE = 400  # messages to send are read out in full so you know what you're approving
 
 
 def clean_transcript(text: str) -> str:
@@ -143,7 +144,8 @@ def run_voice() -> None:
     def confirm_voice(question: str) -> bool:
         print(f"Jarvis: {question}")
         # Long questions (e.g. a full PowerShell command) are shown, not read out.
-        if len(question) > MAX_SPOKEN_QUESTION:
+        limit = MAX_SPOKEN_MESSAGE if question.startswith("Send ") else MAX_SPOKEN_QUESTION
+        if len(question) > limit:
             question = question.split(":")[0].rstrip("?") + "? The details are on screen."
         speak(question)
         mic.flush()  # don't mistake Jarvis's own voice for the answer

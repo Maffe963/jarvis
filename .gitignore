@@ -8,3 +8,4 @@ memory/history.json.corrupt-*
 memory/reminders.json
 memory/jarvis.log
 memory/jarvis.log.old
+contacts.json

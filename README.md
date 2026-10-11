@@ -47,6 +47,26 @@ seconds of quiet, or when you say "that's all" or "go to sleep" (you'll hear a l
 Jarvis can also set reminders ("remind me tomorrow at 9 to email Professor Lee"). They're kept in
 `memory/reminders.json`, and any that came due while Jarvis was off are announced when it starts.
 
+## Email and Discord
+
+Jarvis can send and read Gmail and Discord ("email Mom that I'll be late", "any new emails?",
+"what's new in the study group?"). Every send is read back to you and needs a yes. Messages it reads
+are passed to Claude marked as untrusted, so instructions hidden inside them aren't followed.
+
+- **Gmail:** turn on 2-Step Verification, create an app password (Google Account > Security > App
+  passwords), and put `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD` in `.env`. Reading uses IMAP, which is
+  on by default for Gmail; nothing gets marked as read.
+- **Discord channel (send only):** in a server you manage, Channel settings > Integrations > Webhooks >
+  New Webhook > Copy URL, then set `DISCORD_WEBHOOK_URL`. Say "post to my channel".
+- **Discord bot (send, DM and read):** at discord.com/developers create an application, add a Bot, copy
+  its token into `DISCORD_BOT_TOKEN`, and turn on **Message Content Intent** (needed to read messages).
+  Invite it to your server (OAuth2 > URL Generator > `bot` scope, with Send Messages and Read Message
+  History). People must share a server with the bot to get DMs from it. It sends as the bot, not as you.
+
+Names are looked up in `contacts.json` (copy `contacts.example.json`), or just tell Jarvis "save Mom's
+email as ...". Discord IDs come from right-clicking a user or channel with Developer Mode on (Discord
+Settings > Advanced).
+
 ## Starting with Windows
 
 ```bash
