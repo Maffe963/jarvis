@@ -4,6 +4,7 @@ Keeping a single stream open means nothing said right after "hey Jarvis" is lost
 stream starts up.
 """
 import queue
+import threading
 
 import numpy as np
 import sounddevice as sd
@@ -13,10 +14,14 @@ BLOCK = 1280  # 80 ms, what openWakeWord expects
 
 _blocks: queue.Queue = queue.Queue()
 _stream = None
+muted = threading.Event()  # while set, Jarvis hears only silence
 
 
 def _on_audio(indata, frames, time_info, status) -> None:
-    _blocks.put(indata[:, 0].copy())
+    block = indata[:, 0].copy()
+    if muted.is_set():
+        block[:] = 0
+    _blocks.put(block)
 
 
 def read(timeout: float | None = None) -> np.ndarray | None:

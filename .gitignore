@@ -6,3 +6,5 @@ memory/history.json
 memory/history.json.corrupt-*
 .claude/settings.local.json
 memory/reminders.json
+memory/jarvis.log
+memory/jarvis.log.old

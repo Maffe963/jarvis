@@ -47,6 +47,17 @@ seconds of quiet, or when you say "that's all" or "go to sleep" (you'll hear a l
 Jarvis can also set reminders ("remind me tomorrow at 9 to email Professor Lee"). They're kept in
 `memory/reminders.json`, and any that came due while Jarvis was off are announced when it starts.
 
+## Starting with Windows
+
+```bash
+.venv/Scripts/python.exe startup.py install     # start Jarvis when you sign in
+.venv/Scripts/python.exe startup.py uninstall   # stop doing that
+```
+
+At sign-in Jarvis runs in the background (`main.py --tray`) with an icon by the clock: right-click
+it to mute the microphone, open the log (`memory/jarvis.log`), or quit. Only one Jarvis runs at a
+time; starting another says it's already running.
+
 ## If Jarvis doesn't hear you
 
 Run the microphone test and say "hey Jarvis" when each mic is tested:

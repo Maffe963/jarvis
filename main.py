@@ -209,5 +209,14 @@ def run_voice() -> None:
 if __name__ == "__main__":
     if "--text" in sys.argv:
         run_text()
+    elif "--tray" in sys.argv:
+        import tray
+
+        tray.run(run_voice)
     else:
-        run_voice()
+        import tray
+
+        if tray.claim_single_instance():
+            run_voice()
+        else:
+            print("Jarvis is already running (look for its icon by the clock).")
