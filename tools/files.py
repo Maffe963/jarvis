@@ -67,7 +67,13 @@ def list_folder_access() -> str:
 def resolve(path: str) -> str:
     """Absolute real path; relative paths are taken from the user's home folder."""
     home = os.path.expanduser("~")
-    path = os.path.expanduser(path or ".")
+    path = os.path.expanduser((path or ".").strip())
+    # "E:" / "E:stuff" mean the drive's root here (not Windows' per-drive current folder),
+    # and "/e/stuff" is Git Bash style for E:\stuff.
+    if re.match(r"^[A-Za-z]:(?![\\/])", path):
+        path = path[:2] + os.sep + path[2:]
+    elif re.match(r"^/[A-Za-z](/|$)", path):
+        path = path[1].upper() + ":" + os.sep + path[3:]
     if not os.path.isabs(path):
         path = os.path.join(home, path)
     # Desktop, Documents, etc. are often moved into OneDrive; follow them there.

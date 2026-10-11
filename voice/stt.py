@@ -37,6 +37,7 @@ def record_until_silence(
     max_silence_s: float = 1.2,
     max_record_s: float = 20.0,
     no_speech_timeout_s: float = 6.0,
+    speech_start_blocks: int = SPEECH_START_BLOCKS,
 ) -> np.ndarray:
     """Record from the mic until the speaker stops talking. Returns float32 mono audio.
 
@@ -79,7 +80,7 @@ def record_until_silence(
 
         pre_roll.append(block)
         loud_run = loud_run + 1 if loud else 0
-        if loud_run >= SPEECH_START_BLOCKS:
+        if loud_run >= speech_start_blocks:
             frames.extend(pre_roll)
         elif i >= max_idle_blocks:
             break

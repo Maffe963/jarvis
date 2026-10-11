@@ -179,11 +179,16 @@ def run_voice() -> None:
         # Long questions (e.g. a full PowerShell command) are shown, not read out.
         limit = MAX_SPOKEN_MESSAGE if question.startswith("Send ") else MAX_SPOKEN_QUESTION
         if len(question) > limit:
-            question = question.split(":")[0].rstrip("?") + "? The details are on screen."
-        speak(question)
-        mic.flush()  # don't mistake Jarvis's own voice for the answer
-        answer = transcribe(record_until_silence(no_speech_timeout_s=5))
-        print(f"You: {answer or '(no answer)'}")
+            question = question.split(": ")[0].rstrip("?") + "? The details are on screen."
+        answer = ""
+        for prompt in (question, "Sorry sir, I didn't catch that. Yes or no?"):
+            speak(prompt)
+            mic.flush()  # don't mistake Jarvis's own voice for the answer
+            # A one-word "yes" is short and can be quiet, so any sound at all starts the recording.
+            answer = transcribe(record_until_silence(no_speech_timeout_s=7, speech_start_blocks=1))
+            print(f"You: {answer or '(no answer)'}")
+            if answer:
+                break
         approved = is_yes(answer)
         if not approved:
             speak("Cancelled.")
