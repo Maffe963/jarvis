@@ -1,5 +1,5 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
-from tools import desktop, finder, lists, messaging, reminders, weather
+from tools import desktop, finder, lists, messaging, projects, reminders, weather
 from tools.files import list_files, read_file, write_file
 from tools.search import web_search
 from tools.system import SYSTEM_TOOL_MAP, SYSTEM_TOOLS, needs_confirmation
@@ -77,7 +77,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -91,6 +91,7 @@ TOOL_MAP = {
     **weather.TOOL_MAP,
     **lists.TOOL_MAP,
     **desktop.TOOL_MAP,
+    **projects.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
@@ -138,6 +139,7 @@ def ack_phrase(name: str, inputs: dict) -> str:
         "clear_list": lambda: "deleting that list",
         "set_clipboard": lambda: "copying that",
         "look_at_screen": lambda: "taking a look",
+        "run_project_command": lambda: f"running {inputs.get('command', 'that')}",
         "quit_jarvis": lambda: "closing Jarvis completely" if inputs.get("completely") else "going on standby",
     }
     return phrases.get(name, lambda: "checking now")()
@@ -149,7 +151,7 @@ def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None) -> str | l
     if not func:
         return f"Unknown tool: {name}"
     question = (finder.confirmation(name, inputs) or messaging.confirmation(name, inputs)
-                or lists.confirmation(name, inputs)
+                or lists.confirmation(name, inputs) or projects.confirmation(name, inputs)
                 or needs_confirmation(name, inputs))
     if question and not (confirm and confirm(question)):
         return "The user declined this action. Do not retry it."

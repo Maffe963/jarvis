@@ -1,0 +1,26 @@
+{
+  "my project": {
+    "folder": "C:\path\to\project",
+    "description": "What the project is, so Jarvis knows when to use it.",
+    "commands": {
+      "project status": {
+        "description": "What this command does and what it prints.",
+        "run": ["run.cmd", "status"],
+        "options": {"limit": "--limit"}
+      },
+      "slow task": {
+        "description": "Runs in the background; Jarvis announces when it finishes.",
+        "run": ["run.cmd", "slow-task"],
+        "mode": "background",
+        "timeout": 1800,
+        "confirm": "Optional: a reason to ask before running, e.g. it costs money."
+      },
+      "project app": {
+        "description": "Long-running app: started and left running.",
+        "run": ["app.cmd"],
+        "mode": "launch",
+        "open_url": "http://localhost:8501"
+      }
+    }
+  }
+}
