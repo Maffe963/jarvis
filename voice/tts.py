@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import wave
 
 import numpy as np
@@ -66,13 +67,50 @@ def speak(text: str) -> bool:
             audio, rate = _render_local(text)
         if _interrupted.is_set():
             return False
+        global _playback
+        _playback = (time.monotonic(), _envelope(audio, rate))
         speaking.set()
         try:
             sd.play(audio, samplerate=rate)
             sd.wait()  # returns early if stop() is called
         finally:
             speaking.clear()
+            _playback = None
         return not _interrupted.is_set()
+
+
+ENVELOPE_STEP_S = 0.02
+_playback: tuple[float, np.ndarray] | None = None  # (start time, loudness every 20 ms) of what's playing
+
+
+def _envelope(audio: np.ndarray, rate: int) -> np.ndarray:
+    samples = audio.reshape(len(audio), -1)[:, 0].astype(np.float32) / 32768.0
+    step = max(1, int(rate * ENVELOPE_STEP_S))
+    frames = samples[: len(samples) // step * step].reshape(-1, step)
+    return np.sqrt(np.mean(frames ** 2, axis=1)) if len(frames) else np.zeros(1, dtype=np.float32)
+
+
+def playback_started() -> float | None:
+    """When the current audio started playing (time.monotonic), or None if nothing is playing."""
+    current = _playback
+    return current[0] if current else None
+
+
+def playback_level(t0: float, t1: float, how: str = "mean") -> float:
+    """How loud Jarvis's own audio was between two moments (time.monotonic); 0 outside playback.
+
+    Used to tell the user's voice apart from Jarvis's echo through the speakers.
+    """
+    current = _playback
+    if current is None:
+        return 0.0
+    start, env = current
+    begin = max(0, int((t0 - start) / ENVELOPE_STEP_S))
+    end = min(len(env), max(begin + 1, int((t1 - start) / ENVELOPE_STEP_S)))
+    window = env[begin:end]
+    if not len(window):
+        return 0.0
+    return float(window.max() if how == "max" else np.sqrt(np.mean(window ** 2)))
 
 
 def stop() -> None:

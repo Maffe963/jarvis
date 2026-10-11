@@ -146,7 +146,7 @@ def run_voice() -> None:
     import threading
     import winsound
 
-    from voice import mic, select_microphone, stt, wake_word
+    from voice import barge_in, mic, select_microphone, stt, wake_word
     from voice.stt import record_until_silence, transcribe
     from voice import tts
     from voice.tts import speak
@@ -157,22 +157,24 @@ def run_voice() -> None:
         print(f"Jarvis: {text}")
         threading.Thread(target=speak, args=(text,), daemon=True).start()
 
-    def speak_until_woken(text: str) -> bool:
-        """Speak, but stop the moment someone says 'hey Jarvis'. True if that happened."""
+    def speak_interruptibly(text: str) -> list | None:
+        """Speak, but stop as soon as the user talks over Jarvis (or says 'hey Jarvis').
+
+        Returns the audio heard so far if interrupted, so the recording carries on from it.
+        """
         done = threading.Event()
-        woken = threading.Event()
-
-        def watch():
-            if listen_for_wake_word(stop=done):
-                woken.set()
-                tts.stop()
-
-        watcher = threading.Thread(target=watch, daemon=True)
+        result: list = []
+        watcher = threading.Thread(
+            target=lambda: result.append(barge_in.watch(done, stt.speech_threshold())), daemon=True)
         watcher.start()
         speak(text)
         done.set()
         watcher.join()
-        return woken.is_set()
+        if not result or result[0] is None:
+            return None
+        reason, heard = result[0]
+        print(f"[interrupted by {reason}]")
+        return heard
 
     def confirm_voice(question: str) -> bool:
         print(f"Jarvis: {question}")
@@ -231,16 +233,15 @@ def run_voice() -> None:
         with tts._lock:  # e.g. "Yes sir, closing Jarvis." is still being said in the background
             pass
 
-    woken = False            # woken by interrupting Jarvis mid-sentence
+    interrupted = None       # audio of the user talking over Jarvis, to carry on recording from
     in_conversation = False  # after "hey Jarvis", keep listening without it until things go quiet
     on_standby = False       # Claude Code and the speech model are unloaded until the wake word
     misfires = 0             # recordings in a row that turned out to be just noise
     try:
         while True:
-            if woken:
-                woken = False
-                beep(880)
-                audio = record_until_silence()
+            if interrupted is not None:
+                audio = record_until_silence(already_heard=interrupted)
+                interrupted = None
             elif in_conversation:
                 print("[listening...]")
                 audio = record_until_silence(no_speech_timeout_s=FOLLOWUP_SECONDS if FOLLOWUP_SECONDS > 0 else 20)
@@ -287,9 +288,7 @@ def run_voice() -> None:
             history, response = respond(history, heard, confirm_voice, acknowledge_aloud)
             if response:
                 print(f"Jarvis: {response}\n")
-                woken = speak_until_woken(response)
-                if woken:
-                    print("[interrupted]")
+                interrupted = speak_interruptibly(response)
             if quit_requested.is_set():
                 wait_for_speech_to_finish()
                 break

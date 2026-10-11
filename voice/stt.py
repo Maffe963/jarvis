@@ -32,28 +32,34 @@ def unload_model() -> None:
     gc.collect()
 
 
+def speech_threshold() -> float:
+    return float(os.environ.get("JARVIS_SPEECH_THRESHOLD", "0.015"))
+
+
 def record_until_silence(
     silence_threshold: float | None = None,
     max_silence_s: float = 1.2,
     max_record_s: float = 20.0,
     no_speech_timeout_s: float = 6.0,
     speech_start_blocks: int = SPEECH_START_BLOCKS,
+    already_heard: list[np.ndarray] | None = None,
 ) -> np.ndarray:
     """Record from the mic until the speaker stops talking. Returns float32 mono audio.
 
     Speech counts as started only after ~240 ms of sustained sound, so a single click or bump
     doesn't start (and then end) a recording. The moments just before that are kept so the
-    first syllable isn't clipped.
+    first syllable isn't clipped. `already_heard` continues a recording that began elsewhere
+    (the user talking over Jarvis), so it counts as speech already started.
     """
     if silence_threshold is None:
-        silence_threshold = float(os.environ.get("JARVIS_SPEECH_THRESHOLD", "0.015"))
+        silence_threshold = speech_threshold()
     blocks_per_s = SAMPLE_RATE / BLOCK
     max_silence_blocks = int(max_silence_s * blocks_per_s)
     max_blocks = int(max_record_s * blocks_per_s)
     max_idle_blocks = int(no_speech_timeout_s * blocks_per_s)
     pre_roll: deque[np.ndarray] = deque(maxlen=PRE_ROLL_BLOCKS)
 
-    frames: list[np.ndarray] = []
+    frames: list[np.ndarray] = list(already_heard or [])
     loud_run = 0
     silence_blocks = 0
     loudest = 0.0
