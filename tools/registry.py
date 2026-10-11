@@ -1,4 +1,6 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
+import threading
+
 from tools import (desktop, finder, lists, messaging, monitors, projects, reminders, ui, voice_settings,
                    weather)
 from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
@@ -174,8 +176,23 @@ def ack_phrase(name: str, inputs: dict) -> str:
     return phrases.get(name, lambda: "checking now")()
 
 
+# Set when the user interrupts a task: no further tools run until the next request.
+task_cancelled = threading.Event()
+# What tools did during the current request, so an interrupted task can say what was already done.
+activity: list[str] = []
+_running = threading.Lock()  # held while a tool runs
+
+
+def wait_for_running_tool(timeout_s: float = 5.0) -> None:
+    """After an interruption, let the action already under way finish so `activity` is complete."""
+    if _running.acquire(timeout=timeout_s):
+        _running.release()
+
+
 def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None) -> str | list[dict]:
     """Run a tool. `confirm(question) -> bool` gates risky ones; `acknowledge(phrase)` announces it starting."""
+    if task_cancelled.is_set():
+        return "The user interrupted this task. Stop now and do nothing else."
     func = TOOL_MAP.get(name)
     if not func:
         return f"Unknown tool: {name}"
@@ -188,7 +205,10 @@ def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None) -> str | l
     if acknowledge:
         acknowledge(ack_phrase(name, inputs))
     try:
-        result = func(**inputs)
+        with _running:
+            result = func(**inputs)
+        summary = result if isinstance(result, str) else "looked at the screen"
+        activity.append(f"{name}: {summary.splitlines()[0][:100] if summary else 'done'}")
         return result if isinstance(result, list) else str(result)  # a list is content blocks (e.g. an image)
     except Exception as e:
         return f"Tool error: {e}"

@@ -7,9 +7,10 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from datetime import datetime
 
-from tools.registry import TOOLS, run_tool
+from tools.registry import TOOLS, run_tool, task_cancelled
 
 SYSTEM_PROMPT = """You are Jarvis, a highly capable AI assistant in the style of Tony Stark's Jarvis.
 You are helpful, precise, and slightly formal but personable. You run on the user's Windows PC and can
@@ -41,6 +42,15 @@ class BackendError(Exception):
     """A failure with a message fit to say to the user."""
 
 
+class TaskInterrupted(Exception):
+    """The user stopped Jarvis part-way through a request."""
+
+
+def cancel_task() -> None:
+    """Stop the request in progress (safe from any thread): no more tools, and Claude stops thinking."""
+    task_cancelled.set()
+
+
 def think(conversation_history: list[dict], confirm=None, acknowledge=None) -> str:
     """Run one turn. `confirm(question) -> bool` is asked before risky tool calls; without it they're refused."""
     if BACKEND == "subscription":
@@ -63,6 +73,8 @@ def _think_api(conversation_history: list[dict], system: str, confirm, acknowled
     messages = conversation_history.copy()
 
     while True:
+        if task_cancelled.is_set():
+            raise TaskInterrupted()
         with _client.messages.stream(
             model=os.environ.get("JARVIS_MODEL", "claude-sonnet-5-5"),
             max_tokens=4096,
@@ -80,6 +92,8 @@ def _think_api(conversation_history: list[dict], system: str, confirm, acknowled
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
+                    if task_cancelled.is_set():
+                        raise TaskInterrupted()
                     result = run_tool(block.name, block.input, confirm, acknowledge)
                     tool_results.append({
                         "type": "tool_result",
@@ -177,6 +191,10 @@ class ClaudeCodeSession:
     def close(self) -> None:
         if self._proc and self._proc.poll() is None:
             self._proc.kill()
+            try:
+                self._proc.wait(timeout=5)  # so warm_up() sees it's gone and starts a new one
+            except subprocess.TimeoutExpired:
+                pass
 
     def ask(self, history: list[dict], confirm, acknowledge=None) -> str:
         self.warm_up()
@@ -194,12 +212,21 @@ class ClaudeCodeSession:
             return self.ask(history, confirm, acknowledge)
         self._fresh = False
 
+        deadline = time.monotonic() + 300
         while True:
-            try:
-                event = self._events.get(timeout=300)
-            except queue.Empty:
+            if task_cancelled.is_set():
+                # Ending the process stops Claude mid-thought; a fresh one starts now (replaying history)
+                # so the user's correction isn't slowed down.
                 self.close()
-                raise BackendError("That took too long, sir. Please try again.")
+                threading.Thread(target=self.warm_up, daemon=True).start()
+                raise TaskInterrupted()
+            try:
+                event = self._events.get(timeout=0.2)
+            except queue.Empty:
+                if time.monotonic() > deadline:
+                    self.close()
+                    raise BackendError("That took too long, sir. Please try again.")
+                continue
             if event is None:
                 detail = "".join(self._stderr).strip() or "Claude Code exited."
                 self._proc = None

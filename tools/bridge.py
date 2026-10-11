@@ -38,11 +38,14 @@ class ToolBridge:
 
             def _reply(self, data) -> None:
                 payload = json.dumps(data).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                except ConnectionError:
+                    pass  # Claude Code was stopped (the user interrupted) before the tool finished
 
             def log_message(self, *args) -> None:
                 pass

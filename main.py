@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import threading
 import time
 
 from dotenv import load_dotenv
@@ -9,9 +10,10 @@ load_dotenv()
 
 import anthropic
 
-from brain import BackendError, standby_backend, think, warm_up
+from brain import BackendError, TaskInterrupted, cancel_task, standby_backend, think, warm_up
 from memory.conversation import add_turn, load_history, save_history
 from tools import reminders
+from tools.registry import activity, task_cancelled, wait_for_running_tool
 from tools.system import quit_requested, set_announcer, standby_requested
 
 # Close Jarvis itself (never the computer). Bare "shut down" is left to Claude, which asks which one you mean.
@@ -65,6 +67,16 @@ def clean_transcript(text: str) -> str:
     return "" if text.lower().strip(" .!?,") in NOISE_TRANSCRIPTS else text
 
 
+STOP_WORDS = {"no", "nope", "stop", "wait", "cancel", "hold", "on", "never", "mind", "nevermind", "that", "it",
+               "please", "don't", "dont", "jarvis", "hey", "enough", "actually", "sorry", "abort", "halt", "up"}
+
+
+def is_just_stop(text: str) -> bool:
+    """'No, stop!' / 'wait wait' / 'hold on Jarvis': stop, with no correction to act on."""
+    words = re.findall(r"[a-z']+", text.lower())
+    return bool(words) and all(w in STOP_WORDS for w in words)
+
+
 def is_yes(answer: str) -> bool:
     """True only for a clear yes; any negative word anywhere wins ("yes, wait, no" is a no)."""
     answer = answer.lower()
@@ -74,14 +86,17 @@ def is_yes(answer: str) -> bool:
     return bool(words & YES_WORDS) or any(p in answer for p in YES_PHRASES)
 
 
-def respond(history: list[dict], user_text: str, confirm, say) -> tuple[list[dict], str]:
+def respond(history: list[dict], user_text: str, confirm, say) -> tuple[list[dict], str | None]:
     """Run one turn. On failure the user's turn is dropped so the history stays valid.
 
     `say(text)` delivers the instant "Yes sir, opening Spotify." when the first tool starts. The returned
-    response is only what's left to say after that, and may be empty.
+    response is only what's left to say after that, and may be empty; it is None if the user stopped
+    the task part-way (cancel_task), in which case the history notes what had already been done.
     """
     history = add_turn(history, "user", user_text)
     acknowledged: list[str] = []
+    task_cancelled.clear()
+    activity.clear()
 
     def acknowledge(phrase: str) -> None:
         if not acknowledged:  # once per request, even if several tools run
@@ -93,6 +108,12 @@ def respond(history: list[dict], user_text: str, confirm, say) -> tuple[list[dic
         response = response.replace("[done]", "").strip()
         if not response and not acknowledged:
             response = "Done, sir."
+    except TaskInterrupted:
+        wait_for_running_tool()
+        done = "; ".join(activity) or "nothing yet"
+        history = add_turn(history, "assistant", f"[The user interrupted me before I finished. Already done: {done}]")
+        save_history(history)
+        return history, None
     except BackendError as e:
         history.pop()
         return history, str(e)
@@ -131,9 +152,21 @@ def run_text() -> None:
             if is_exit(user_input):
                 print("Jarvis: Goodbye, sir.")
                 break
-            history, response = respond(history, user_input, confirm_text,
-                                        lambda text: print(f"Jarvis: {text}"))
-            if response:
+            # Run the request in the background so Ctrl+C can stop it part-way instead of quitting.
+            result: list = []
+            worker = threading.Thread(target=lambda: result.append(respond(
+                history, user_input, confirm_text, lambda text: print(f"Jarvis: {text}"))), daemon=True)
+            worker.start()
+            while worker.is_alive():
+                try:
+                    worker.join(0.2)
+                except KeyboardInterrupt:
+                    cancel_task()
+                    print("\n[stopping...]")
+            history, response = result[0]
+            if response is None:
+                print("Jarvis: Stopped, sir. What would you like instead?")
+            elif response:
                 print(f"Jarvis: {response}")
             print()
             if quit_requested.is_set() or standby_requested.is_set():
@@ -143,7 +176,6 @@ def run_text() -> None:
 
 
 def run_voice() -> None:
-    import threading
     import winsound
 
     from voice import barge_in, mic, select_microphone, stt, wake_word
@@ -176,7 +208,39 @@ def run_voice() -> None:
         print(f"[interrupted by {reason}]")
         return heard
 
+    confirming = threading.Event()  # a yes/no answer isn't an interruption of the task
+
     def confirm_voice(question: str) -> bool:
+        confirming.set()
+        try:
+            return ask_yes_no(question)
+        finally:
+            confirming.clear()
+
+    def run_task(history: list[dict], text: str) -> tuple[list[dict], str | None, str | None]:
+        """respond(), while listening for the user speaking up. Returns (history, response, what they said)."""
+        done = threading.Event()
+        said: list = []
+
+        def listen():
+            while not done.is_set():
+                text = clean_transcript(stt.listen_during_task(done, confirming) or "")
+                if text:
+                    said.append(text)
+                    print(f"You (during the task): {text}")
+                    cancel_task()
+                    return
+
+        watcher = threading.Thread(target=listen, daemon=True)
+        if barge_in.mode() != "off":
+            watcher.start()
+        history, response = respond(history, text, confirm_voice, acknowledge_aloud)
+        done.set()
+        if watcher.is_alive():
+            watcher.join(timeout=2)
+        return history, response, (said[0] if said else None)
+
+    def ask_yes_no(question: str) -> bool:
         print(f"Jarvis: {question}")
         # Long questions (e.g. a full PowerShell command) are shown, not read out.
         limit = MAX_SPOKEN_MESSAGE if question.startswith("Send ") else MAX_SPOKEN_QUESTION
@@ -234,34 +298,38 @@ def run_voice() -> None:
             pass
 
     interrupted = None       # audio of the user talking over Jarvis, to carry on recording from
+    pending = None           # a correction the user spoke while Jarvis was working: the next request
     in_conversation = False  # after "hey Jarvis", keep listening without it until things go quiet
     on_standby = False       # Claude Code and the speech model are unloaded until the wake word
     misfires = 0             # recordings in a row that turned out to be just noise
     try:
         while True:
-            if interrupted is not None:
-                audio = record_until_silence(already_heard=interrupted)
-                interrupted = None
-            elif in_conversation:
-                print("[listening...]")
-                audio = record_until_silence(no_speech_timeout_s=FOLLOWUP_SECONDS if FOLLOWUP_SECONDS > 0 else 20)
-                if not audio.size:
-                    if FOLLOWUP_SECONDS > 0:
-                        end_conversation()
-                    continue
+            if pending is not None:
+                heard, pending = pending, None
             else:
-                listen_for_wake_word()
-                print("[awake] listening...")
-                beep(880)
-                if on_standby:
-                    # Reload while you're still talking, so it's ready by the time you finish.
-                    on_standby = False
-                    threading.Thread(target=warm_up, daemon=True).start()
-                    threading.Thread(target=stt._get_model, daemon=True).start()
-                audio = record_until_silence()
+                if interrupted is not None:
+                    audio = record_until_silence(already_heard=interrupted)
+                    interrupted = None
+                elif in_conversation:
+                    print("[listening...]")
+                    audio = record_until_silence(
+                        no_speech_timeout_s=FOLLOWUP_SECONDS if FOLLOWUP_SECONDS > 0 else 20)
+                    if not audio.size:
+                        if FOLLOWUP_SECONDS > 0:
+                            end_conversation()
+                        continue
+                else:
+                    listen_for_wake_word()
+                    print("[awake] listening...")
+                    beep(880)
+                    if on_standby:
+                        # Reload while you're still talking, so it's ready by the time you finish.
+                        on_standby = False
+                        threading.Thread(target=warm_up, daemon=True).start()
+                        threading.Thread(target=stt._get_model, daemon=True).start()
+                    audio = record_until_silence()
+                heard = clean_transcript(transcribe(audio))
             in_conversation = FOLLOWUP_SECONDS != 0
-
-            heard = clean_transcript(transcribe(audio))
             if not heard:
                 print("[nothing heard]")
                 misfires += 1
@@ -285,7 +353,14 @@ def run_voice() -> None:
             if said in CANCEL_PHRASES:
                 continue  # e.g. "hey Jarvis... stop" just to cut it off
 
-            history, response = respond(history, heard, confirm_voice, acknowledge_aloud)
+            history, response, spoke_up = run_task(history, heard)
+            if spoke_up is not None:
+                # The user cut in while Jarvis was working: "stop" just stops, anything else is a correction.
+                if is_just_stop(spoke_up):
+                    speak("Stopped, sir.")
+                else:
+                    pending = spoke_up
+                continue
             if response:
                 print(f"Jarvis: {response}\n")
                 interrupted = speak_interruptibly(response)

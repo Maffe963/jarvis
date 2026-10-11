@@ -98,6 +98,46 @@ def record_until_silence(
     return np.concatenate(frames)
 
 
+def listen_during_task(done: threading.Event, paused: threading.Event) -> str | None:
+    """While Jarvis works on a request, catch the user speaking up ("stop", "no, the other one").
+
+    Returns what they said, or None once `done` is set. Ignores Jarvis's own voice, and pauses while
+    `paused` is set (Jarvis is waiting for a yes/no answer, which is not an interruption).
+    """
+    threshold = speech_threshold()
+    pre_roll: deque[np.ndarray] = deque(maxlen=PRE_ROLL_BLOCKS)
+    frames: list[np.ndarray] = []
+    loud_run = quiet = 0
+    end_after = int(0.8 * SAMPLE_RATE / BLOCK)   # short pause = they've finished the sentence
+    longest = int(10 * SAMPLE_RATE / BLOCK)
+    mic.flush()
+    while not done.is_set():
+        block = mic.read(timeout=0.2)
+        if block is None:
+            continue
+        if paused.is_set() or tts.speaking.is_set():
+            frames.clear()
+            pre_roll.clear()
+            loud_run = quiet = 0
+            continue
+        loud = float(np.sqrt(np.mean(block ** 2))) > threshold
+        if frames:
+            frames.append(block)
+            quiet = 0 if loud else quiet + 1
+            if quiet > end_after or len(frames) > longest:
+                text = transcribe(np.concatenate(frames))
+                frames.clear()
+                loud_run = quiet = 0
+                if text and not done.is_set():
+                    return text
+            continue
+        pre_roll.append(block)
+        loud_run = loud_run + 1 if loud else 0
+        if loud_run >= SPEECH_START_BLOCKS:
+            frames.extend(pre_roll)
+    return None
+
+
 def transcribe(audio: np.ndarray) -> str:
     """Transcribe float32 16 kHz mono audio to text."""
     if audio.size < SAMPLE_RATE * 0.3:
