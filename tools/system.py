@@ -10,6 +10,8 @@ import webbrowser
 
 import psutil
 
+from tools import files
+
 user32 = ctypes.windll.user32
 
 # Set by main.py so background tools (timers) can talk. Defaults to printing.
@@ -261,8 +263,13 @@ def needs_confirmation(name: str, inputs: dict) -> str | None:
         return f"{inputs.get('action', '').replace('_', ' ').capitalize()} the computer?"
     if name == "run_powershell":
         return f"Run this command: {inputs.get('command')}?"
-    if name == "write_file" and os.path.exists(os.path.expanduser(inputs.get("path", ""))):
-        return f"Overwrite {inputs.get('path')}?"
+    if name in ("read_file", "write_file", "list_files"):
+        path = inputs.get("directory", ".") if name == "list_files" else inputs.get("path", "")
+        if not files.is_allowed(path):
+            verb = {"read_file": "Read", "write_file": "Write to", "list_files": "Look in"}[name]
+            return f"{verb} {files.resolve(path)}? It's outside your usual folders."
+        if name == "write_file" and os.path.exists(files.resolve(path)):
+            return f"Overwrite {files.resolve(path)}?"
     return None
 
 
