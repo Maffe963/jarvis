@@ -5,7 +5,7 @@ from collections import deque
 import numpy as np
 from faster_whisper import WhisperModel
 
-from voice import mic
+from voice import mic, tts
 from voice.mic import BLOCK, SAMPLE_RATE
 
 SPEECH_START_BLOCKS = 3  # 240 ms of sound before it counts as speech
@@ -45,8 +45,16 @@ def record_until_silence(
     loud_run = 0
     silence_blocks = 0
     loudest = 0.0
-    for i in range(max_blocks):
+    i = 0
+    while i < max_blocks:
         block = mic.read()
+        if tts.speaking.is_set():
+            # A timer or reminder is talking: that's Jarvis, not the user. Start over once it's done.
+            frames.clear()
+            pre_roll.clear()
+            loud_run = silence_blocks = 0
+            continue
+        i += 1
         level = float(np.sqrt(np.mean(block ** 2)))
         loudest = max(loudest, level)
         loud = level > silence_threshold

@@ -8,6 +8,7 @@ import sounddevice as sd
 
 _lock = threading.Lock()  # timers and reminders speak from background threads
 _interrupted = threading.Event()
+speaking = threading.Event()  # set while audio is playing, so recording can ignore Jarvis's own voice
 
 
 def _elevenlabs_enabled() -> bool:
@@ -35,8 +36,12 @@ def speak(text: str) -> bool:
             audio, rate = _render_local(text)
         if _interrupted.is_set():
             return False
-        sd.play(audio, samplerate=rate)
-        sd.wait()  # returns early if stop() is called
+        speaking.set()
+        try:
+            sd.play(audio, samplerate=rate)
+            sd.wait()  # returns early if stop() is called
+        finally:
+            speaking.clear()
         return not _interrupted.is_set()
 
 

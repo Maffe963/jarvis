@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 
@@ -12,12 +13,24 @@ from memory.conversation import add_turn, load_history, save_history
 from tools import reminders
 from tools.system import set_announcer
 
-EXIT_PHRASES = ("quit", "exit", "goodbye", "go to sleep")
-CANCEL_PHRASES = ("stop", "cancel", "never mind", "nevermind", "shut up", "quiet", "that's all", "nothing")
+EXIT_PHRASES = ("quit", "exit", "goodbye", "shut down jarvis")
+SLEEP_PHRASES = ("go to sleep", "that's all", "that's it", "that will be all", "thanks jarvis", "thank you jarvis")
+CANCEL_PHRASES = ("stop", "cancel", "never mind", "nevermind", "shut up", "quiet", "nothing")
+# Whisper tends to "hear" these in background noise; on their own they're not requests.
+NOISE_TRANSCRIPTS = {"you", "thank you", "thanks for watching", "thank you for watching", "bye", "uh", "um", "hmm"}
+# After "hey Jarvis", how long to keep listening for the next request without it.
+# 0 = say "hey Jarvis" every time; -1 = stay in the conversation until told "that's all".
+FOLLOWUP_SECONDS = float(os.environ.get("JARVIS_FOLLOWUP_SECONDS", "10"))
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "confirm", "confirmed", "affirmative", "okay", "ok", "absolutely"}
 YES_PHRASES = ("do it", "go ahead", "go for it")
 NO_WORDS = {"no", "nope", "nah", "not", "don't", "dont", "cancel", "stop", "never", "wait", "negative"}
 MAX_SPOKEN_QUESTION = 90
+
+
+def clean_transcript(text: str) -> str:
+    """Drop a leading "hey Jarvis" (people say it out of habit) and noise-only transcripts."""
+    text = re.sub(r"^\s*(hey|hi|okay|ok)?[\s,]*jarvis[\s,.!?]*", "", text, flags=re.IGNORECASE).strip()
+    return "" if text.lower().strip(" .!?,") in NOISE_TRANSCRIPTS else text
 
 
 def is_yes(answer: str) -> bool:
@@ -130,25 +143,57 @@ def run_voice() -> None:
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")
     reminders.start()
-    woken = False  # already woken by interrupting Jarvis mid-sentence
+    def beep(freq: int) -> None:
+        # In the background so recording starts immediately.
+        threading.Thread(target=winsound.Beep, args=(freq, 120), daemon=True).start()
+
+    def end_conversation() -> None:
+        nonlocal in_conversation, misfires
+        in_conversation, misfires = False, 0
+        print("[conversation over; say 'hey Jarvis' to start again]")
+        beep(440)
+
+    woken = False            # woken by interrupting Jarvis mid-sentence
+    in_conversation = False  # after "hey Jarvis", keep listening without it until things go quiet
+    misfires = 0             # recordings in a row that turned out to be just noise
     try:
         while True:
-            if not woken:
+            if woken:
+                woken = False
+                beep(880)
+                audio = record_until_silence()
+            elif in_conversation:
+                print("[listening...]")
+                audio = record_until_silence(no_speech_timeout_s=FOLLOWUP_SECONDS if FOLLOWUP_SECONDS > 0 else 20)
+                if not audio.size:
+                    if FOLLOWUP_SECONDS > 0:
+                        end_conversation()
+                    continue
+            else:
                 listen_for_wake_word()
-            woken = False
-            print("[awake] listening...")
-            # Beep in the background so recording starts immediately.
-            threading.Thread(target=winsound.Beep, args=(880, 120), daemon=True).start()
-            heard = transcribe(record_until_silence())
+                print("[awake] listening...")
+                beep(880)
+                audio = record_until_silence()
+            in_conversation = FOLLOWUP_SECONDS != 0
+
+            heard = clean_transcript(transcribe(audio))
             if not heard:
                 print("[nothing heard]")
+                misfires += 1
+                if in_conversation and misfires >= 2 and FOLLOWUP_SECONDS > 0:
+                    end_conversation()
                 continue
+            misfires = 0
             print(f"You: {heard}")
 
             said = heard.lower().strip(" .!?,")
             if said in EXIT_PHRASES:
                 speak("Goodbye, sir.")
                 break
+            if said in SLEEP_PHRASES:
+                speak("Very good, sir.")
+                end_conversation()
+                continue
             if said in CANCEL_PHRASES:
                 continue  # e.g. "hey Jarvis... stop" just to cut it off
 

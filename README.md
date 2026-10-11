@@ -39,7 +39,13 @@ Then choose how Jarvis reaches Claude in `.env`:
 .venv/Scripts/python.exe main.py --text   # type instead of talking
 ```
 
-Say "goodbye" or press Ctrl+C to quit.
+Say "hey Jarvis" to start a conversation, then just keep talking: after each reply Jarvis listens
+for your next request without the wake word. It goes back to waiting for "hey Jarvis" after 10
+seconds of quiet, or when you say "that's all" or "go to sleep" (you'll hear a low beep). Say
+"hey Jarvis" while it's talking to cut it off. Say "goodbye" or press Ctrl+C to quit.
+
+Jarvis can also set reminders ("remind me tomorrow at 9 to email Professor Lee"). They're kept in
+`memory/reminders.json`, and any that came due while Jarvis was off are announced when it starts.
 
 ## If Jarvis doesn't hear you
 
@@ -60,6 +66,12 @@ Turning up the mic's input volume in Windows Sound settings works better than lo
 After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.012` to help tune these.
 
 ## Other settings
+
+- `JARVIS_FOLLOWUP_SECONDS` (default 10): how long Jarvis waits for a follow-up before needing
+  "hey Jarvis" again. `0` = say it every time; `-1` = stay listening until you say "that's all".
+- `JARVIS_FILE_FOLDERS`: folders Jarvis may read and write without asking, separated by `;`.
+  Default: Desktop, Documents, Downloads, Pictures, Music, Videos (including OneDrive copies).
+  Anything else is confirmed with you first.
 
 - `JARVIS_MODEL`: in subscription mode an alias like `sonnet` or `opus` (default `sonnet`); in API
   mode a full model ID (default `claude-sonnet-5-5`).
