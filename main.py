@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import time
 
 from dotenv import load_dotenv
 
@@ -11,9 +12,23 @@ import anthropic
 from brain import BackendError, think, warm_up
 from memory.conversation import add_turn, load_history, save_history
 from tools import reminders
-from tools.system import set_announcer
+from tools.system import quit_requested, set_announcer
 
-EXIT_PHRASES = ("quit", "exit", "goodbye", "shut down jarvis")
+# Close Jarvis itself (never the computer). Bare "shut down" is left to Claude, which asks which one you mean.
+EXIT_PHRASES = {
+    "quit", "exit", "goodbye", "bye", "goodbye jarvis", "bye jarvis", "quit jarvis", "exit jarvis",
+    "close jarvis", "shut down jarvis", "shutdown jarvis", "turn off jarvis", "jarvis off",
+    "close yourself", "quit yourself", "exit yourself", "shut yourself down", "turn yourself off",
+}
+
+
+def is_exit(text: str) -> bool:
+    words = re.sub(r"[^a-z' ]", " ", text.lower()).split()
+    while words and words[0] in ("please", "ok", "okay", "now"):
+        words.pop(0)
+    while words and words[-1] in ("please", "now", "sir"):
+        words.pop()
+    return " ".join(words) in EXIT_PHRASES
 SLEEP_PHRASES = ("go to sleep", "that's all", "that's it", "that will be all", "thanks jarvis", "thank you jarvis")
 CANCEL_PHRASES = ("stop", "cancel", "never mind", "nevermind", "shut up", "quiet", "nothing")
 # Whisper tends to "hear" these in background noise; on their own they're not requests.
@@ -97,7 +112,7 @@ def run_text() -> None:
             user_input = input("You: ").strip()
             if not user_input:
                 continue
-            if user_input.lower().strip(" .!") in EXIT_PHRASES:
+            if is_exit(user_input):
                 print("Jarvis: Goodbye, sir.")
                 break
             history, response = respond(history, user_input, confirm_text,
@@ -105,6 +120,8 @@ def run_text() -> None:
             if response:
                 print(f"Jarvis: {response}")
             print()
+            if quit_requested.is_set():
+                break
     except KeyboardInterrupt:
         print("\nJarvis: Shutting down, sir.")
 
@@ -211,7 +228,7 @@ def run_voice() -> None:
             print(f"You: {heard}")
 
             said = heard.lower().strip(" .!?,")
-            if said in EXIT_PHRASES:
+            if is_exit(heard):
                 speak("Goodbye, sir.")
                 break
             if said in SLEEP_PHRASES:
@@ -227,6 +244,11 @@ def run_voice() -> None:
                 woken = speak_until_woken(response)
                 if woken:
                     print("[interrupted]")
+            if quit_requested.is_set():
+                time.sleep(0.3)
+                with tts._lock:  # let "Yes sir, closing Jarvis." finish before exiting
+                    pass
+                break
     except KeyboardInterrupt:
         print("\nJarvis: Shutting down, sir.")
 

@@ -23,6 +23,20 @@ def bridge(path: str, body: dict | None = None):
         return json.loads(resp.read())
 
 
+def to_mcp_content(result) -> list[dict]:
+    """Tools return text, or Anthropic-style content blocks when there's an image."""
+    if isinstance(result, str):
+        return [{"type": "text", "text": result}]
+    content = []
+    for block in result:
+        if block["type"] == "image":
+            content.append({"type": "image", "data": block["source"]["data"],
+                            "mimeType": block["source"]["media_type"]})
+        else:
+            content.append({"type": "text", "text": block.get("text", "")})
+    return content
+
+
 def handle(method: str, params: dict):
     if method == "initialize":
         return {
@@ -41,7 +55,7 @@ def handle(method: str, params: dict):
     if method == "tools/call":
         try:
             result = bridge("/call", {"name": params["name"], "input": params.get("arguments")})["result"]
-            return {"content": [{"type": "text", "text": result}], "isError": False}
+            return {"content": to_mcp_content(result), "isError": False}
         except Exception as e:
             return {"content": [{"type": "text", "text": f"Tool bridge error: {e}"}], "isError": True}
     raise LookupError(method)

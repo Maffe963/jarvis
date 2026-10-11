@@ -241,6 +241,14 @@ def run_powershell(command: str) -> str:
 
 # ---------- timers ----------
 
+quit_requested = threading.Event()  # main.py exits once the current reply is done
+
+
+def quit_jarvis() -> str:
+    quit_requested.set()
+    return "Jarvis will close after this reply. The computer stays on."
+
+
 def set_timer(seconds: int, label: str = "") -> str:
     def ring():
         announce(f"Sir, your {label + ' ' if label else ''}timer is done.")
@@ -305,11 +313,14 @@ SYSTEM_TOOLS = [
     _schema("run_powershell", "Run a PowerShell command and return its output. Use only when no other tool fits. "
             "The user will be asked to confirm.",
             {"command": {"type": "string"}}, ["command"]),
+    _schema("quit_jarvis", "Close Jarvis itself (this assistant), leaving the computer on. Use when the user "
+            "wants Jarvis to quit, close, stop running or turn itself off."),
     _schema("set_timer", "Set a countdown timer; Jarvis announces when it finishes.",
             {"seconds": {"type": "integer"}, "label": {"type": "string"}}, ["seconds"]),
 ]
 
 SYSTEM_TOOL_MAP = {
+    "quit_jarvis": quit_jarvis,
     "open_app": open_app,
     "close_app": close_app,
     "list_running_apps": list_running_apps,
