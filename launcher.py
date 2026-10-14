@@ -64,6 +64,12 @@ def main() -> None:
         print("Set TELEGRAM_BOT_TOKEN and TELEGRAM_ALLOWED_USER_ID in .env first.")
         return
     me, api, offset, backoff = int(allowed), Telegram(token), None, 1
+    try:
+        from telegram_bot import register_commands
+
+        register_commands(api.call)  # the list Telegram shows when you type "/"
+    except Exception:
+        pass
     while True:
         if jarvis_running():
             offset = None  # Jarvis's bot is reading messages now; pick up fresh when it turns off

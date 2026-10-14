@@ -41,6 +41,21 @@ HELP = ("Message me like you'd talk to Jarvis (text or a voice note), e.g. \"ope
         "/status - CPU, memory and open apps\n/off - turn Jarvis off on the PC\n/help - this message")
 
 
+# Shown by Telegram when you type "/" or tap the Menu button.
+COMMANDS = [
+    ("on", "Turn Jarvis on (when it's off)"),
+    ("off", "Turn Jarvis off on the PC"),
+    ("stop", "Stop what Jarvis is doing"),
+    ("screenshot", "See your screen (add left, right, main or all)"),
+    ("status", "CPU, memory and open apps"),
+    ("help", "What Jarvis can do"),
+]
+
+
+def register_commands(call) -> None:
+    call("setMyCommands", commands=[{"command": c, "description": d} for c, d in COMMANDS])
+
+
 def _env(name: str) -> str:
     value = os.environ.get(name, "").strip()
     return "" if value.startswith("your_") else value
@@ -93,6 +108,10 @@ class PhoneJarvis:
     # ---------- plumbing ----------
 
     def start(self) -> None:
+        try:
+            register_commands(self.api.call)
+        except Exception as e:
+            print(f"[telegram] couldn't register the command menu: {e}")
         threading.Thread(target=self._poll, daemon=True, name="telegram-poll").start()
         threading.Thread(target=self._work, daemon=True, name="telegram-work").start()
         print("[telegram] phone control on" + ("" if self.allowed else " (waiting for you to set TELEGRAM_ALLOWED_USER_ID)"))
@@ -174,7 +193,7 @@ class PhoneJarvis:
     def _command(self, text: str) -> None:
         command, _, arg = text.partition(" ")
         command = command.split("@")[0].lower()
-        if command in ("/start", "/help"):
+        if command in ("/start", "/help", "/commands"):
             self.send(HELP)
         elif command == "/stop":
             if self.working.is_set():
@@ -189,6 +208,8 @@ class PhoneJarvis:
 
             apps = sorted({system._app_label(w) for w in system._app_windows()})
             self.send(f"{system.system_info()}\nOpen apps: {', '.join(apps) or 'none'}")
+        elif command == "/on":
+            self.send("Jarvis is already on. 👍")
         elif command == "/off":
             if self._ask("Turn Jarvis off on the PC?" + ("" if launcher_running() else " You won't be able to "
                          "reach me from your phone until it's started on the PC again.")):
