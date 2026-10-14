@@ -11,7 +11,7 @@ load_dotenv()
 import anthropic
 
 from brain import BackendError, TaskInterrupted, cancel_task, standby_backend, think, warm_up
-from memory.conversation import add_turn, load_history, save_history
+from memory.conversation import HISTORY_FILE, add_turn, load_history, save_history
 from tools import reminders
 from tools.registry import activity, task_cancelled, wait_for_running_tool
 from tools.system import quit_requested, set_announcer, standby_requested
@@ -87,13 +87,32 @@ def is_yes(answer: str) -> bool:
     return bool(words & YES_WORDS) or any(p in answer for p in YES_PHRASES)
 
 
-def respond(history: list[dict], user_text: str, confirm, say) -> tuple[list[dict], str | None]:
+_respond_lock = threading.Lock()  # voice and phone share one Claude: one request at a time
+
+
+def respond(history: list[dict], user_text: str, confirm, say, history_file: str = HISTORY_FILE,
+            actions_out: list[str] | None = None) -> tuple[list[dict], str | None]:
     """Run one turn. On failure the user's turn is dropped so the history stays valid.
 
     `say(text)` delivers the instant "Yes sir, opening Spotify." when the first tool starts. The returned
     response is only what's left to say after that, and may be empty; it is None if the user stopped
     the task part-way (cancel_task), in which case the history notes what had already been done.
+    `actions_out`, if given, receives what each tool actually reported, to show the user as proof.
     """
+    with _respond_lock:
+        try:
+            return _respond(history, user_text, confirm, say, history_file)
+        finally:
+            if actions_out is not None:
+                actions_out[:] = list(activity)
+
+
+def busy() -> bool:
+    """True while a request (voice or phone) is being worked on."""
+    return _respond_lock.locked()
+
+
+def _respond(history: list[dict], user_text: str, confirm, say, history_file: str) -> tuple[list[dict], str | None]:
     history = add_turn(history, "user", user_text)
     acknowledged: list[str] = []
     task_cancelled.clear()
@@ -113,7 +132,7 @@ def respond(history: list[dict], user_text: str, confirm, say) -> tuple[list[dic
         wait_for_running_tool()
         done = "; ".join(activity) or "nothing yet"
         history = add_turn(history, "assistant", f"[The user interrupted me before I finished. Already done: {done}]")
-        save_history(history)
+        save_history(history, history_file)
         return history, None
     except BackendError as e:
         history.pop()
@@ -132,12 +151,37 @@ def respond(history: list[dict], user_text: str, confirm, say) -> tuple[list[dic
         print(f"[error] {e}")
         return history, "The server returned an error, sir. Please try again."
     history = add_turn(history, "assistant", " ".join(acknowledged + [response]).strip())
-    save_history(history)
+    save_history(history, history_file)
     return history, response
 
 
 def confirm_text(question: str) -> bool:
     return input(f"Jarvis: {question} (y/n) ").strip().lower() in ("y", "yes")
+
+
+def start_phone():
+    """Phone control through Telegram, if it's set up in .env (see telegram_bot.py). Returns the bot or None."""
+    import telegram_bot
+    import tray
+
+    return telegram_bot.start(respond, load_history, cancel_task, tray.turn_off)
+
+
+def run_remote() -> None:
+    """Phone control only: no microphone or speech, just the Telegram bot (and timers/reminders to the phone)."""
+    warm_up()
+    phone = start_phone()
+    if phone is None:
+        print("Phone control isn't set up: add TELEGRAM_BOT_TOKEN to .env (see telegram_bot.py).")
+        return
+    set_announcer(lambda msg: (print(f"Jarvis: {msg}"), phone.notify(msg)))
+    reminders.start()
+    print("Jarvis online (phone only). Message your bot on Telegram. Ctrl+C to quit.")
+    try:
+        while not quit_requested.is_set():
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
 
 
 def run_text() -> None:
@@ -261,7 +305,8 @@ def run_voice() -> None:
             speak("Cancelled.")
         return approved
 
-    set_announcer(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg)))
+    phone = start_phone()
+    set_announcer(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg), phone and phone.notify(msg)))
     history = load_history()
     microphone = select_microphone()
     print("Starting up...")
@@ -382,13 +427,13 @@ if __name__ == "__main__":
     elif "--tray" in sys.argv:
         import tray
 
-        tray.run(run_voice)
+        tray.run(run_remote if "--remote" in sys.argv else run_voice)
     else:
         import tray
 
         if tray.claim_single_instance():
             tray.listen_for_off_switch()
-            run_voice()
+            (run_remote if "--remote" in sys.argv else run_voice)()
         else:
             tray.turn_off_running_jarvis()
             print("Jarvis was already running, so I've turned it off. Run this again to turn it back on.")

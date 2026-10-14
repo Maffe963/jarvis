@@ -220,6 +220,9 @@ def ui_action(action: str, target: str = "", x: float | None = None, y: float | 
         _type(text)
         return f"Typed {len(text)} characters."
     if action == "key_press":
+        if len(keys.strip()) == 1 and not keys.strip().isalnum():
+            _type(keys.strip())  # a symbol like * or + : typing it presses the right keys for this keyboard
+            return f"Pressed {keys.strip()}."
         if not _parse_keys(keys):
             return f"Don't know the keys '{keys}'. Use names like ctrl+s, alt+tab, enter, f5."
         _press(keys)
