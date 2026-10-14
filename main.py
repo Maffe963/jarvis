@@ -13,7 +13,8 @@ import anthropic
 from brain import BackendError, TaskInterrupted, cancel_task, standby_backend, think, warm_up
 from memory.conversation import HISTORY_FILE, add_turn, load_history, save_history
 from tools import reminders
-from tools.registry import activity, task_cancelled, wait_for_running_tool
+from tools import quick
+from tools.registry import activity, run_tool, task_cancelled, wait_for_running_tool
 from tools.system import quit_requested, set_announcer, standby_requested
 
 # Close Jarvis itself (never the computer). Bare "shut down" is left to Claude, which asks which one you mean.
@@ -122,6 +123,20 @@ def _respond(history: list[dict], user_text: str, confirm, say, history_file: st
         if not acknowledged:  # once per request, even if several tools run
             acknowledged.append(f"Yes sir, {phrase}.")
             say(acknowledged[0])
+
+    # Common simple commands ("pause", "volume up", "what time is it") are done instantly, without Claude.
+    instant = quick.match(user_text.rsplit("]\n", 1)[-1])  # (phone messages start with a [note])
+    if instant:
+        tool, value = instant
+        if tool is None:
+            response = value
+        else:
+            result = str(run_tool(tool, value, confirm, acknowledge))
+            failed = any(w in result.lower() for w in ("error", "isn't", "refused", "no active", "unknown", "couldn't"))
+            response = result if failed or not acknowledged else ""
+        history = add_turn(history, "assistant", " ".join(acknowledged + [response]).strip())
+        save_history(history, history_file)
+        return history, response
 
     try:
         response = think(history, confirm, acknowledge)
@@ -313,6 +328,7 @@ def run_voice() -> None:
     warm_up()
     wake_word._get_model()
     stt._get_model()
+    tts.warm_up()
     print(f"Jarvis online (voice mode), listening on: {microphone}")
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")

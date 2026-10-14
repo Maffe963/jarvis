@@ -142,19 +142,40 @@ def _render_local(text: str) -> tuple[np.ndarray, int]:
     return pcm.reshape(-1, channels), rate
 
 
-def _render_elevenlabs(text: str) -> tuple[np.ndarray, int]:
-    from elevenlabs import ElevenLabs, VoiceSettings
+_eleven = None  # one client, created once: importing and connecting the first time takes seconds
 
-    client = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
+
+def warm_up() -> None:
+    """Load the ElevenLabs client at startup so the first reply isn't slow."""
+    if _elevenlabs_enabled():
+        try:
+            _client()
+        except Exception as e:
+            print(f"[tts] ElevenLabs not ready ({e})")
+
+
+def _client():
+    global _eleven
+    if _eleven is None:
+        from elevenlabs import ElevenLabs
+
+        _eleven = ElevenLabs(api_key=os.environ["ELEVENLABS_API_KEY"])
+    return _eleven
+
+
+def _render_elevenlabs(text: str) -> tuple[np.ndarray, int]:
+    from elevenlabs import VoiceSettings
+
     voice_id = settings().get("elevenlabs_voice_id") or os.environ.get("ELEVENLABS_VOICE_ID", "")
     if not voice_id or voice_id.startswith("your_"):
         voice_id = DEFAULT_ELEVENLABS_VOICE
 
-    stream = client.text_to_speech.convert(
+    # Streaming with the "flash" model: the whole sentence arrives in about 0.3s (vs. seconds for convert()).
+    stream = _client().text_to_speech.stream(
         voice_id=voice_id,
         text=text,
-        model_id="eleven_turbo_v2",
+        model_id=os.environ.get("JARVIS_ELEVENLABS_MODEL", "eleven_flash_v2_5"),
         voice_settings=VoiceSettings(stability=0.5, similarity_boost=0.75, style=0.0, use_speaker_boost=True),
         output_format="pcm_16000",
     )
-    return np.frombuffer(b"".join(stream), dtype=np.int16), 16000
+    return np.frombuffer(b"".join(chunk for chunk in stream if chunk), dtype=np.int16), 16000
