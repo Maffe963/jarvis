@@ -14,3 +14,4 @@ projects.json
 memory/file_access.json
 memory/voice.json
 memory/telegram_history.json
+memory/facts.json

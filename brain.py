@@ -10,6 +10,7 @@ import threading
 import time
 from datetime import datetime
 
+from tools import facts
 from tools.registry import TOOLS, run_tool, task_cancelled
 
 SYSTEM_PROMPT = """You are Jarvis, a highly capable AI assistant in the style of Tony Stark's Jarvis.
@@ -55,7 +56,7 @@ def think(conversation_history: list[dict], confirm=None, acknowledge=None) -> s
     """Run one turn. `confirm(question) -> bool` is asked before risky tool calls; without it they're refused."""
     if BACKEND == "subscription":
         return _get_session().ask(conversation_history, confirm, acknowledge)
-    system = f"{SYSTEM_PROMPT}\n\nCurrent date and time: {datetime.now():%A, %B %d, %Y, %I:%M %p}."
+    system = f"{SYSTEM_PROMPT}{facts.prompt_section()}\n\nCurrent date and time: {datetime.now():%A, %B %d, %Y, %I:%M %p}."
     return _think_api(conversation_history, system, confirm, acknowledge)
 
 
@@ -160,8 +161,10 @@ class ClaudeCodeSession:
             env.pop(var, None)
         workdir = os.path.join(tempfile.gettempdir(), "jarvis-claude-code")
         os.makedirs(workdir, exist_ok=True)
+        cmd = list(self._cmd)
+        cmd[cmd.index("--system-prompt") + 1] = SYSTEM_PROMPT + facts.prompt_section()  # memory as of now
         self._proc = subprocess.Popen(
-            self._cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", env=env, cwd=workdir, bufsize=1,
         )
         self._events = queue.Queue()
