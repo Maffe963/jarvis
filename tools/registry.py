@@ -2,7 +2,7 @@
 import threading
 
 from tools import (desktop, facts, finder, gcal, lists, messaging, monitors, phone, projects, reminders,
-                   spotify, ui, updater, voice_settings, weather)
+                   spotify, ui, updater, voice_settings, watchers, weather)
 from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
                          revoke_folder_access, write_file)
 from tools.search import web_search
@@ -97,7 +97,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -123,6 +123,7 @@ TOOL_MAP = {
     **spotify.TOOL_MAP,
     **gcal.TOOL_MAP,
     **updater.TOOL_MAP,
+    **watchers.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
@@ -182,6 +183,10 @@ def ack_phrase(name: str, inputs: dict) -> str:
                                     "previous": "going back"}.get(inputs.get("action"), "on it"),
         "calendar_events": lambda: "checking your calendar",
         "update_jarvis": lambda: "updating myself",
+        "watch_download": lambda: "I'll keep an eye on it",
+        "watch_app_closes": lambda: "I'll keep an eye on it",
+        "watch_file": lambda: "I'll keep an eye on it",
+        "watch_cpu": lambda: "I'll keep an eye on it",
         "check_for_updates": lambda: "checking for updates",
         "calendar_add_event": lambda: "adding that to your calendar",
         "calendar_update_event": lambda: "updating your calendar",
