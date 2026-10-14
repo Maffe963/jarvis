@@ -2,7 +2,7 @@
 import threading
 
 from tools import (desktop, facts, finder, gcal, lists, messaging, monitors, phone, projects, reminders,
-                   spotify, ui, voice_settings, weather)
+                   spotify, ui, updater, voice_settings, weather)
 from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
                          revoke_folder_access, write_file)
 from tools.search import web_search
@@ -97,7 +97,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -122,6 +122,7 @@ TOOL_MAP = {
     **phone.TOOL_MAP,
     **spotify.TOOL_MAP,
     **gcal.TOOL_MAP,
+    **updater.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
@@ -180,6 +181,8 @@ def ack_phrase(name: str, inputs: dict) -> str:
         "spotify_control": lambda: {"pause": "pausing", "resume": "resuming", "next": "skipping",
                                     "previous": "going back"}.get(inputs.get("action"), "on it"),
         "calendar_events": lambda: "checking your calendar",
+        "update_jarvis": lambda: "updating myself",
+        "check_for_updates": lambda: "checking for updates",
         "calendar_add_event": lambda: "adding that to your calendar",
         "calendar_update_event": lambda: "updating your calendar",
         "calendar_delete_event": lambda: "removing that from your calendar",
@@ -213,7 +216,7 @@ def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None) -> str | l
     question = (finder.confirmation(name, inputs) or messaging.confirmation(name, inputs)
                 or lists.confirmation(name, inputs) or projects.confirmation(name, inputs)
                 or ui.confirmation(name, inputs) or phone.confirmation(name, inputs)
-                or gcal.confirmation(name, inputs)
+                or gcal.confirmation(name, inputs) or updater.confirmation(name, inputs)
                 or needs_confirmation(name, inputs))
     if question and not (confirm and confirm(question)):
         return "The user declined this action. Do not retry it."

@@ -113,6 +113,20 @@ def busy() -> bool:
     return _respond_lock.locked()
 
 
+def exit_when_asked() -> None:
+    """Quit once Jarvis has been asked to (e.g. 'update yourself' or 'turn off' from the phone) and the request
+    is finished, even if the voice loop is just sitting there listening."""
+    def watch():
+        while not (quit_requested.is_set() and not busy()):
+            time.sleep(0.5)
+        time.sleep(3)  # let the voice loop exit by itself, and the phone reply go out
+        import tray
+
+        tray._shutdown()
+
+    threading.Thread(target=watch, daemon=True).start()
+
+
 def _respond(history: list[dict], user_text: str, confirm, say, history_file: str) -> tuple[list[dict], str | None]:
     history = add_turn(history, "user", user_text)
     acknowledged: list[str] = []
@@ -191,6 +205,7 @@ def run_remote() -> None:
         return
     set_announcer(lambda msg: (print(f"Jarvis: {msg}"), phone.notify(msg)))
     reminders.start()
+    exit_when_asked()
     print("Jarvis online (phone only). Message your bot on Telegram. Ctrl+C to quit.")
     try:
         while not quit_requested.is_set():
@@ -333,6 +348,8 @@ def run_voice() -> None:
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")
     reminders.start()
+    exit_when_asked()
+
     def beep(freq: int) -> None:
         # In the background so recording starts immediately.
         threading.Thread(target=winsound.Beep, args=(freq, 120), daemon=True).start()
