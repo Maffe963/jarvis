@@ -75,18 +75,27 @@ class TelegramAPI:
             raise RuntimeError(body.get("description", "Telegram error"))
         return body["result"]
 
-    def send_photo(self, chat_id: int, jpeg: bytes, caption: str = "") -> None:
+    def _upload(self, method: str, field: str, filename: str, data: bytes, content_type: str, **fields) -> None:
         boundary = uuid.uuid4().hex
-        parts = []
-        for name, value in (("chat_id", str(chat_id)), ("caption", caption[:1000])):
-            parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode())
-        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"screen.jpg\"\r\n"
-                     "Content-Type: image/jpeg\r\n\r\n".encode() + jpeg + b"\r\n")
+        parts = [f"--{boundary}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n".encode()
+                 for name, value in fields.items()]
+        safe_name = filename.replace('"', "'")
+        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{field}\"; filename=\"{safe_name}\"\r\n"
+                     f"Content-Type: {content_type}\r\n\r\n".encode() + data + b"\r\n")
         parts.append(f"--{boundary}--\r\n".encode())
-        req = urllib.request.Request(f"{self.base}/sendPhoto", data=b"".join(parts),
+        req = urllib.request.Request(f"{self.base}/{method}", data=b"".join(parts),
                                      headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=300) as resp:
             resp.read()
+
+    def send_photo(self, chat_id: int, jpeg: bytes, caption: str = "") -> None:
+        self._upload("sendPhoto", "photo", "screen.jpg", jpeg, "image/jpeg", chat_id=chat_id, caption=caption[:1000])
+
+    def send_document(self, chat_id: int, path: str, caption: str = "") -> None:
+        with open(path, "rb") as f:
+            data = f.read()
+        self._upload("sendDocument", "document", os.path.basename(path), data, "application/octet-stream",
+                     chat_id=chat_id, caption=caption[:1000])
 
     def download(self, file_id: str) -> bytes:
         path = self.call("getFile", file_id=file_id)["file_path"]
@@ -185,6 +194,14 @@ class PhoneJarvis:
             self._command(text)
         elif "voice" in message or "audio" in message:
             self.jobs.put(("voice", (message.get("voice") or message.get("audio"))["file_id"]))
+        elif "document" in message or "photo" in message or "video" in message:
+            if "photo" in message:  # several sizes; the last is the largest
+                file_id, name = message["photo"][-1]["file_id"], f"photo-{time.strftime('%Y%m%d-%H%M%S')}.jpg"
+            else:
+                item = message.get("document") or message["video"]
+                file_id = item["file_id"]
+                name = item.get("file_name") or f"video-{time.strftime('%Y%m%d-%H%M%S')}.mp4"
+            self.jobs.put(("file", (file_id, name, (message.get("caption") or "").strip())))
         elif text:
             if self.working.is_set() or not self.jobs.empty():
                 self.send("⏳ Got it, I'll do that once the current task is finished. (/stop to cancel it)")
@@ -224,6 +241,16 @@ class PhoneJarvis:
         while True:
             kind, value = self.jobs.get()
             try:
+                if kind == "file":
+                    file_id, name, caption = value
+                    path = self._save_incoming(file_id, name)
+                    if not path:
+                        continue
+                    self.send(f"📥 Saved to {path}")
+                    if not caption:
+                        continue
+                    value = f"{caption}\n[The user just sent this file from their phone; it's saved at {path}]"
+                    kind = "text"
                 if kind == "voice":
                     value = self._transcribe(value)
                     if not value:
@@ -234,6 +261,28 @@ class PhoneJarvis:
             except Exception as e:
                 traceback.print_exc()
                 self.send(f"Something went wrong: {e}")
+
+    def _save_incoming(self, file_id: str, name: str) -> str | None:
+        """Save a file sent from the phone into Downloads\\From phone, never overwriting anything."""
+        folder = os.path.join(os.path.expanduser("~"), "Downloads", "From phone")
+        os.makedirs(folder, exist_ok=True)
+        name = os.path.basename(name).strip() or "file"
+        stem, ext = os.path.splitext(name)
+        path, n = os.path.join(folder, name), 1
+        while os.path.exists(path):
+            n += 1
+            path = os.path.join(folder, f"{stem} ({n}){ext}")
+        try:
+            data = self.api.download(file_id)
+        except Exception as e:
+            self.send(f"Couldn't download that file ({e}). Telegram only lets bots download files up to 20 MB.")
+            return None
+        with open(path, "wb") as f:
+            f.write(data)
+        return path
+
+    def send_file(self, path: str, caption: str = "") -> None:
+        self.api.send_document(self.chat_id, path, caption)
 
     def _transcribe(self, file_id: str) -> str:
         from faster_whisper.audio import decode_audio
@@ -270,7 +319,7 @@ class PhoneJarvis:
         for action in actions:
             name, _, result = action.partition(": ")
             mark = "⚠️" if any(word in result.lower() for word in PROBLEM_WORDS) else "✅"
-            lines.append(f"{mark} {result or name}")
+            lines.append(f"{mark} {name.replace('_', ' ')} → {result}" if result else f"{mark} {name.replace('_', ' ')}")
         return "\n".join(lines)
 
     def _ask(self, question: str) -> bool:
@@ -308,14 +357,19 @@ class PhoneJarvis:
             self.send(f"Couldn't send the screenshot: {e}")
 
 
+active: PhoneJarvis | None = None  # the running bot, so tools can send things to the phone
+
+
 def start(respond, history_loader, cancel_task, turn_off) -> PhoneJarvis | None:
     """Start phone control if TELEGRAM_BOT_TOKEN is set. Returns the bot, or None."""
     token = _env("TELEGRAM_BOT_TOKEN")
     if not token:
         return None
     allowed = _env("TELEGRAM_ALLOWED_USER_ID")
+    global active
     bot = PhoneJarvis(token, int(allowed) if allowed.isdigit() else None, respond, history_loader, cancel_task, turn_off)
     bot.start()
+    active = bot
     if os.environ.pop("JARVIS_STARTED_FROM_PHONE", ""):
         bot.send("✅ Jarvis is on. Send /help to see what I can do.")
     return bot
