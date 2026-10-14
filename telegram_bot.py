@@ -190,9 +190,9 @@ class PhoneJarvis:
             apps = sorted({system._app_label(w) for w in system._app_windows()})
             self.send(f"{system.system_info()}\nOpen apps: {', '.join(apps) or 'none'}")
         elif command == "/off":
-            if self._ask("Turn Jarvis off on the PC? You won't be able to reach me from your phone until it's "
-                         "started on the PC again."):
-                self.send("Turning off. 👋")
+            if self._ask("Turn Jarvis off on the PC?" + ("" if launcher_running() else " You won't be able to "
+                         "reach me from your phone until it's started on the PC again.")):
+                self.send("Turning off. 👋" + (" Send /on when you want me back." if launcher_running() else ""))
                 self.turn_off()
         else:
             self.send("I don't know that command. /help shows what I can do.")
@@ -295,4 +295,16 @@ def start(respond, history_loader, cancel_task, turn_off) -> PhoneJarvis | None:
     allowed = _env("TELEGRAM_ALLOWED_USER_ID")
     bot = PhoneJarvis(token, int(allowed) if allowed.isdigit() else None, respond, history_loader, cancel_task, turn_off)
     bot.start()
+    if os.environ.pop("JARVIS_STARTED_FROM_PHONE", ""):
+        bot.send("✅ Jarvis is on. Send /help to see what I can do.")
     return bot
+
+
+def launcher_running() -> bool:
+    """Whether launcher.py is waiting in the background, so /on works again after Jarvis turns off."""
+    import ctypes
+
+    handle = ctypes.windll.kernel32.OpenMutexW(0x00100000, False, "Local\\JarvisLauncher")
+    if handle:
+        ctypes.windll.kernel32.CloseHandle(handle)
+    return bool(handle)
