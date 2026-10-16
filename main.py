@@ -13,7 +13,7 @@ import anthropic
 from brain import NEW_MESSAGE, BackendError, TaskInterrupted, cancel_task, standby_backend, think, warm_up
 from memory.conversation import HISTORY_FILE, add_turn, load_history, save_history
 from tools import reminders
-from tools import quick
+from tools import offline, quick
 from tools.registry import activity, run_tool, task_cancelled, wait_for_running_tool
 from tools.system import quit_requested, set_announcer, standby_requested
 
@@ -89,6 +89,7 @@ def is_yes(answer: str) -> bool:
 
 
 _respond_lock = threading.Lock()  # voice and phone share one Claude: one request at a time
+offline_note_given = threading.Event()  # say 'using my offline brain' once, not every time
 
 
 def respond(history: list[dict], user_text: str, confirm, say, history_file: str = HISTORY_FILE,
@@ -197,22 +198,23 @@ def _respond(history: list[dict], user_text: str, confirm, say, history_file: st
                                                  "If what they say next corrects a lasting preference, remember it.]")
         save_history(history, history_file)
         return history, None
-    except BackendError as e:
-        history.pop()
-        return history, str(e)
-    except anthropic.AuthenticationError:
-        history.pop()
-        return history, "My API key was rejected, sir. Please check the ANTHROPIC_API_KEY in the .env file."
-    except anthropic.RateLimitError:
-        history.pop()
-        return history, "I'm being rate limited, sir. Give me a moment and try again."
-    except anthropic.APIConnectionError:
-        history.pop()
-        return history, "I can't reach the server, sir. Please check the internet connection."
-    except anthropic.APIError as e:
-        history.pop()
-        print(f"[error] {e}")
-        return history, "The server returned an error, sir. Please try again."
+    except (BackendError, anthropic.AuthenticationError, anthropic.RateLimitError, anthropic.APIConnectionError,
+            anthropic.APIError) as e:
+        problem = {
+            anthropic.AuthenticationError: "My API key was rejected, sir. Please check the ANTHROPIC_API_KEY in the .env file.",
+            anthropic.RateLimitError: "I'm being rate limited, sir. Give me a moment and try again.",
+            anthropic.APIConnectionError: "I can't reach the server, sir. Please check the internet connection.",
+        }.get(type(e), str(e) if isinstance(e, BackendError) else "The server returned an error, sir. Please try again.")
+        print(f"[claude unavailable] {problem}")
+        # Claude can't be reached: let the small model on this PC handle it if it can.
+        offline_reply = None if acknowledged else offline.answer(user_text.rsplit("]\n", 1)[-1], confirm, acknowledge)
+        if offline_reply is None:
+            history.pop()
+            return history, problem
+        response = offline_reply if not acknowledged or "error" in offline_reply.lower() else ""
+        if not offline_note_given.is_set():
+            offline_note_given.set()
+            say("Claude isn't reachable right now, sir, so I'm using my offline brain for simple things.")
     history = add_turn(history, "assistant", " ".join(acknowledged + [response]).strip())
     save_history(history, history_file)
     return history, response

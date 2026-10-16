@@ -347,6 +347,9 @@ def standby_backend() -> None:
     """Stop Claude Code to free memory; the next request starts it again and replays recent history."""
     if _session is not None:
         _session.close()
+    from tools import offline
+
+    offline.unload()
 
 
 def warm_up() -> None:
