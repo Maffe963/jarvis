@@ -1,7 +1,7 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
 import threading
 
-from tools import (background, desktop, facts, finder, gcal, lists, messaging, monitors, phone, projects, reminders,
+from tools import (background, browser, desktop, facts, finder, gcal, lists, messaging, monitors, phone, projects, reminders,
                    spotify, ui, updater, voice_settings, watchers, weather)
 from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
                          revoke_folder_access, write_file)
@@ -97,7 +97,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + background.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + background.TOOLS + browser.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -125,6 +125,7 @@ TOOL_MAP = {
     **updater.TOOL_MAP,
     **watchers.TOOL_MAP,
     **background.TOOL_MAP,
+    **browser.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
@@ -184,6 +185,8 @@ def ack_phrase(name: str, inputs: dict) -> str:
                                     "previous": "going back"}.get(inputs.get("action"), "on it"),
         "calendar_events": lambda: "checking your calendar",
         "update_jarvis": lambda: "updating myself",
+        "browser_open": lambda: "opening that in my browser",
+        "browser_search": lambda: "searching for that",
         "start_background_task": lambda: "I'll work on that in the background",
         "watch_download": lambda: "I'll keep an eye on it",
         "watch_app_closes": lambda: "I'll keep an eye on it",
@@ -228,6 +231,7 @@ def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None, cancelled:
                 or lists.confirmation(name, inputs) or projects.confirmation(name, inputs)
                 or ui.confirmation(name, inputs) or phone.confirmation(name, inputs)
                 or gcal.confirmation(name, inputs) or updater.confirmation(name, inputs)
+                or browser.confirmation(name, inputs)
                 or needs_confirmation(name, inputs))
     if question and not (confirm and confirm(question)):
         return "The user declined this action. Do not retry it."

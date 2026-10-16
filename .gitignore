@@ -17,3 +17,4 @@ memory/telegram_history.json
 memory/facts.json
 memory/tokens/
 memory/background_tasks.json
+memory/browser-profile/
