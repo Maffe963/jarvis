@@ -1,6 +1,6 @@
 anthropic>=0.40.0
 python-dotenv>=1.0.0
-duckduckgo-search>=5.0.0
+ddgs>=9.0
 numpy>=1.26
 sounddevice>=0.4.7
 faster-whisper>=1.0.3
