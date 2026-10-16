@@ -94,22 +94,25 @@ def think(conversation_history: list[dict], confirm=None, acknowledge=None, on_t
 _client = None
 
 
-def _think_api(conversation_history: list[dict], system: str, confirm, acknowledge, on_text=None) -> str:
+def _think_api(conversation_history: list[dict], system: str, confirm, acknowledge, on_text=None,
+               tools: list[dict] | None = None, cancelled: threading.Event | None = None,
+               log: list[str] | None = None) -> str:
     global _client
     from anthropic import Anthropic
 
     if _client is None:
         _client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
     messages = conversation_history.copy()
+    cancelled = task_cancelled if cancelled is None else cancelled
 
     while True:
-        if task_cancelled.is_set():
+        if cancelled.is_set():
             raise TaskInterrupted()
         with _client.messages.stream(
             model=os.environ.get("JARVIS_MODEL", "claude-sonnet-5-5"),
             max_tokens=4096,
             system=system,
-            tools=TOOLS,
+            tools=TOOLS if tools is None else tools,
             messages=messages,
         ) as stream:
             if on_text:
@@ -126,9 +129,9 @@ def _think_api(conversation_history: list[dict], system: str, confirm, acknowled
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
-                    if task_cancelled.is_set():
+                    if cancelled.is_set():
                         raise TaskInterrupted()
-                    result = run_tool(block.name, block.input, confirm, acknowledge)
+                    result = run_tool(block.name, block.input, confirm, acknowledge, cancelled, log)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -153,13 +156,18 @@ class ClaudeCodeSession:
     next turn starts a fresh one and replays recent history so nothing is forgotten.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, system_prompt: str | None = None, allowed_tools: set[str] | None = None,
+                 cancelled: threading.Event | None = None, log: list[str] | None = None) -> None:
+        """Defaults: the main conversation. Background tasks pass their own prompt, tools and stop switch."""
         from tools.bridge import ToolBridge
+
+        self.system_prompt = system_prompt or SYSTEM_PROMPT
+        self.cancelled = task_cancelled if cancelled is None else cancelled
 
         claude = shutil.which("claude")
         if not claude:
             raise BackendError("I can't find Claude Code on this PC, sir. Please install it or switch to API mode.")
-        self.bridge = ToolBridge()
+        self.bridge = ToolBridge(allowed_tools, self.cancelled, log)
         config = {"mcpServers": {"jarvis": {
             "command": sys.executable,
             "args": [os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")],
@@ -174,7 +182,7 @@ class ClaudeCodeSession:
             "--include-partial-messages",       # the reply arrives word by word, so speech can start early
             "--model", os.environ.get("JARVIS_MODEL", "sonnet"),
             "--effort", os.environ.get("JARVIS_EFFORT", "low"),
-            "--system-prompt", SYSTEM_PROMPT,
+            "--system-prompt", self.system_prompt,
             "--tools", "",                      # no built-in Claude Code tools (Bash, Edit, ...)
             "--strict-mcp-config", "--mcp-config", self._mcp_config_path,
             "--allowedTools", "mcp__jarvis",    # only Jarvis's own tools
@@ -196,7 +204,7 @@ class ClaudeCodeSession:
         workdir = os.path.join(tempfile.gettempdir(), "jarvis-claude-code")
         os.makedirs(workdir, exist_ok=True)
         cmd = list(self._cmd)
-        cmd[cmd.index("--system-prompt") + 1] = SYSTEM_PROMPT + facts.prompt_section()  # memory as of now
+        cmd[cmd.index("--system-prompt") + 1] = self.system_prompt + facts.prompt_section()  # memory as of now
         self._proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", env=env, cwd=workdir, bufsize=1,
@@ -232,6 +240,12 @@ class ClaudeCodeSession:
                 self._proc.wait(timeout=5)  # so warm_up() sees it's gone and starts a new one
             except subprocess.TimeoutExpired:
                 pass
+        if self._proc:
+            for pipe in (self._proc.stdin, self._proc.stdout, self._proc.stderr):
+                try:
+                    pipe.close()
+                except (OSError, ValueError):
+                    pass
 
     def ask(self, history: list[dict], confirm, acknowledge=None, on_text=None) -> str:
         self.warm_up()
@@ -251,11 +265,12 @@ class ClaudeCodeSession:
 
         deadline = time.monotonic() + 300
         while True:
-            if task_cancelled.is_set():
+            if self.cancelled.is_set():
                 # Ending the process stops Claude mid-thought; a fresh one starts now (replaying history)
                 # so the user's correction isn't slowed down.
                 self.close()
-                threading.Thread(target=self.warm_up, daemon=True).start()
+                if self.cancelled is task_cancelled:
+                    threading.Thread(target=self.warm_up, daemon=True).start()
                 raise TaskInterrupted()
             try:
                 event = self._events.get(timeout=0.2)
@@ -310,6 +325,22 @@ def _get_session() -> ClaudeCodeSession:
     if _session is None:
         _session = ClaudeCodeSession()
     return _session
+
+
+def run_background(task: str, system_prompt: str, allowed: set[str], cancelled: threading.Event,
+                   confirm, log: list[str]) -> str:
+    """Work on a task in a separate Claude conversation (its own Claude Code process, tools and stop switch),
+    so it doesn't hold up the main one. Returns Claude's final report."""
+    request = [{"role": "user", "content": task}]
+    if BACKEND == "subscription":
+        session = ClaudeCodeSession(system_prompt, allowed, cancelled, log)
+        try:
+            return session.ask(request, confirm)
+        finally:
+            session.close()
+    system = f"{system_prompt}{facts.prompt_section()}\n\n{screen_context()}"
+    return _think_api(request, system, confirm, None, tools=[t for t in TOOLS if t["name"] in allowed],
+                      cancelled=cancelled, log=log)
 
 
 def standby_backend() -> None:

@@ -1,7 +1,7 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
 import threading
 
-from tools import (desktop, facts, finder, gcal, lists, messaging, monitors, phone, projects, reminders,
+from tools import (background, desktop, facts, finder, gcal, lists, messaging, monitors, phone, projects, reminders,
                    spotify, ui, updater, voice_settings, watchers, weather)
 from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
                          revoke_folder_access, write_file)
@@ -97,7 +97,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + background.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -124,6 +124,7 @@ TOOL_MAP = {
     **gcal.TOOL_MAP,
     **updater.TOOL_MAP,
     **watchers.TOOL_MAP,
+    **background.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
@@ -183,6 +184,7 @@ def ack_phrase(name: str, inputs: dict) -> str:
                                     "previous": "going back"}.get(inputs.get("action"), "on it"),
         "calendar_events": lambda: "checking your calendar",
         "update_jarvis": lambda: "updating myself",
+        "start_background_task": lambda: "I'll work on that in the background",
         "watch_download": lambda: "I'll keep an eye on it",
         "watch_app_closes": lambda: "I'll keep an eye on it",
         "watch_file": lambda: "I'll keep an eye on it",
@@ -211,9 +213,13 @@ def wait_for_running_tool(timeout_s: float = 5.0) -> None:
         _running.release()
 
 
-def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None) -> str | list[dict]:
-    """Run a tool. `confirm(question) -> bool` gates risky ones; `acknowledge(phrase)` announces it starting."""
-    if task_cancelled.is_set():
+def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None, cancelled: threading.Event | None = None,
+             log: list[str] | None = None) -> str | list[dict]:
+    """Run a tool. `confirm(question) -> bool` gates risky ones; `acknowledge(phrase)` announces it starting.
+    `cancelled` / `log` default to the main conversation's; background tasks pass their own."""
+    cancelled = task_cancelled if cancelled is None else cancelled
+    log = activity if log is None else log
+    if cancelled.is_set():
         return "The user interrupted this task. Stop now and do nothing else."
     func = TOOL_MAP.get(name)
     if not func:
@@ -231,7 +237,7 @@ def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None) -> str | l
         with _running:
             result = func(**inputs)
         summary = result if isinstance(result, str) else "looked at the screen"
-        activity.append(f"{name}: {summary.splitlines()[0][:100] if summary else 'done'}")
+        log.append(f"{name}: {summary.splitlines()[0][:100] if summary else 'done'}")
         return result if isinstance(result, list) else str(result)  # a list is content blocks (e.g. an image)
     except Exception as e:
         return f"Tool error: {e}"
