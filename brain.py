@@ -77,12 +77,16 @@ def cancel_task() -> None:
     task_cancelled.set()
 
 
-def think(conversation_history: list[dict], confirm=None, acknowledge=None) -> str:
-    """Run one turn. `confirm(question) -> bool` is asked before risky tool calls; without it they're refused."""
+NEW_MESSAGE = object()  # passed to on_text when Claude starts a new message (e.g. after using a tool)
+
+
+def think(conversation_history: list[dict], confirm=None, acknowledge=None, on_text=None) -> str:
+    """Run one turn. `confirm(question) -> bool` is asked before risky tool calls; without it they're refused.
+    `on_text(piece)` receives the reply as it's written (and NEW_MESSAGE between messages)."""
     if BACKEND == "subscription":
-        return _get_session().ask(conversation_history, confirm, acknowledge)
+        return _get_session().ask(conversation_history, confirm, acknowledge, on_text)
     system = f"{SYSTEM_PROMPT}{facts.prompt_section()}\n\n{screen_context()}"
-    return _think_api(conversation_history, system, confirm, acknowledge)
+    return _think_api(conversation_history, system, confirm, acknowledge, on_text)
 
 
 # ---------- API backend ----------
@@ -90,7 +94,7 @@ def think(conversation_history: list[dict], confirm=None, acknowledge=None) -> s
 _client = None
 
 
-def _think_api(conversation_history: list[dict], system: str, confirm, acknowledge) -> str:
+def _think_api(conversation_history: list[dict], system: str, confirm, acknowledge, on_text=None) -> str:
     global _client
     from anthropic import Anthropic
 
@@ -108,6 +112,10 @@ def _think_api(conversation_history: list[dict], system: str, confirm, acknowled
             tools=TOOLS,
             messages=messages,
         ) as stream:
+            if on_text:
+                on_text(NEW_MESSAGE)
+                for piece in stream.text_stream:
+                    on_text(piece)
             response = stream.get_final_message()
 
         if response.stop_reason == "end_turn":
@@ -163,6 +171,7 @@ class ClaudeCodeSession:
         self._cmd = [
             claude, "-p",
             "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+            "--include-partial-messages",       # the reply arrives word by word, so speech can start early
             "--model", os.environ.get("JARVIS_MODEL", "sonnet"),
             "--effort", os.environ.get("JARVIS_EFFORT", "low"),
             "--system-prompt", SYSTEM_PROMPT,
@@ -224,7 +233,7 @@ class ClaudeCodeSession:
             except subprocess.TimeoutExpired:
                 pass
 
-    def ask(self, history: list[dict], confirm, acknowledge=None) -> str:
+    def ask(self, history: list[dict], confirm, acknowledge=None, on_text=None) -> str:
         self.warm_up()
         self.bridge.confirm = confirm
         self.bridge.acknowledge = acknowledge
@@ -237,7 +246,7 @@ class ClaudeCodeSession:
         except OSError:
             # The process died between turns: start over, replaying history.
             self._start()
-            return self.ask(history, confirm, acknowledge)
+            return self.ask(history, confirm, acknowledge, on_text)
         self._fresh = False
 
         deadline = time.monotonic() + 300
@@ -259,6 +268,12 @@ class ClaudeCodeSession:
                 detail = "".join(self._stderr).strip() or "Claude Code exited."
                 self._proc = None
                 raise _error_for(detail)
+            if on_text and event.get("type") == "stream_event":
+                inner = event.get("event") or {}
+                if inner.get("type") == "message_start":
+                    on_text(NEW_MESSAGE)
+                elif inner.get("type") == "content_block_delta" and inner["delta"].get("type") == "text_delta":
+                    on_text(inner["delta"]["text"])
             if event.get("type") == "result":
                 if event.get("is_error"):
                     raise _error_for(str(event.get("result") or event.get("subtype")))

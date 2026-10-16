@@ -10,7 +10,7 @@ load_dotenv()
 
 import anthropic
 
-from brain import BackendError, TaskInterrupted, cancel_task, standby_backend, think, warm_up
+from brain import NEW_MESSAGE, BackendError, TaskInterrupted, cancel_task, standby_backend, think, warm_up
 from memory.conversation import HISTORY_FILE, add_turn, load_history, save_history
 from tools import reminders
 from tools import quick
@@ -92,20 +92,52 @@ _respond_lock = threading.Lock()  # voice and phone share one Claude: one reques
 
 
 def respond(history: list[dict], user_text: str, confirm, say, history_file: str = HISTORY_FILE,
-            actions_out: list[str] | None = None) -> tuple[list[dict], str | None]:
+            actions_out: list[str] | None = None, on_text=None) -> tuple[list[dict], str | None]:
     """Run one turn. On failure the user's turn is dropped so the history stays valid.
 
     `say(text)` delivers the instant "Yes sir, opening Spotify." when the first tool starts. The returned
     response is only what's left to say after that, and may be empty; it is None if the user stopped
     the task part-way (cancel_task), in which case the history notes what had already been done.
     `actions_out`, if given, receives what each tool actually reported, to show the user as proof.
+    `on_text`, if given, receives the reply as Claude writes it (see FirstSentence).
     """
     with _respond_lock:
         try:
-            return _respond(history, user_text, confirm, say, history_file)
+            return _respond(history, user_text, confirm, say, history_file, on_text)
         finally:
             if actions_out is not None:
                 actions_out[:] = list(activity)
+
+
+class FirstSentence:
+    """Starts saying the first sentence of a reply as soon as Claude has written it, instead of waiting for
+    the whole reply. The rest is said afterwards (where it can be interrupted as usual)."""
+
+    END = re.compile(r"[.!?](?=\s)")  # a sentence end followed by more text (so not '3.5' or a cut-off)
+
+    def __init__(self, say) -> None:
+        self.say, self.text, self.spoken = say, "", ""
+
+    def __call__(self, piece) -> None:
+        if piece is NEW_MESSAGE:
+            self.text = ""  # e.g. text written before a tool call; start over
+            return
+        if self.spoken:
+            return
+        self.text += piece
+        draft = self.text.lstrip()
+        if draft.startswith("["):  # maybe [done], which is never spoken
+            return
+        end = self.END.search(draft)
+        if end and end.end() >= 12:
+            self.spoken = draft[:end.end()].strip()
+            self.say(self.spoken)
+
+    def rest(self, response: str) -> str:
+        """What's left to say of the final reply."""
+        if self.spoken and self.spoken in response:
+            return response.split(self.spoken, 1)[1].strip()
+        return response
 
 
 def busy() -> bool:
@@ -127,7 +159,8 @@ def exit_when_asked() -> None:
     threading.Thread(target=watch, daemon=True).start()
 
 
-def _respond(history: list[dict], user_text: str, confirm, say, history_file: str) -> tuple[list[dict], str | None]:
+def _respond(history: list[dict], user_text: str, confirm, say, history_file: str,
+             on_text=None) -> tuple[list[dict], str | None]:
     history = add_turn(history, "user", user_text)
     acknowledged: list[str] = []
     task_cancelled.clear()
@@ -153,7 +186,7 @@ def _respond(history: list[dict], user_text: str, confirm, say, history_file: st
         return history, response
 
     try:
-        response = think(history, confirm, acknowledge)
+        response = think(history, confirm, acknowledge, on_text)
         response = response.replace("[done]", "").strip()
         if not response and not acknowledged:
             response = "Done, sir."
@@ -310,10 +343,17 @@ def run_voice() -> None:
         watcher = threading.Thread(target=listen, daemon=True)
         if barge_in.mode() != "off":
             watcher.start()
-        history, response = respond(history, text, confirm_voice, acknowledge_aloud)
+        def say_early(sentence: str) -> None:
+            print(f"Jarvis: {sentence}")
+            threading.Thread(target=speak, args=(sentence,), daemon=True).start()
+
+        first = FirstSentence(say_early)
+        history, response = respond(history, text, confirm_voice, acknowledge_aloud, on_text=first)
         done.set()
         if watcher.is_alive():
             watcher.join(timeout=2)
+        if response:
+            response = first.rest(response)  # the first sentence is already being said
         return history, response, (said[0] if said else None)
 
     def ask_yes_no(question: str) -> bool:
