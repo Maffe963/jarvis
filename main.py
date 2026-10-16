@@ -160,7 +160,8 @@ def _respond(history: list[dict], user_text: str, confirm, say, history_file: st
     except TaskInterrupted:
         wait_for_running_tool()
         done = "; ".join(activity) or "nothing yet"
-        history = add_turn(history, "assistant", f"[The user interrupted me before I finished. Already done: {done}]")
+        history = add_turn(history, "assistant", f"[The user interrupted me before I finished. Already done: {done}. "
+                                                 "If what they say next corrects a lasting preference, remember it.]")
         save_history(history, history_file)
         return history, None
     except BackendError as e:

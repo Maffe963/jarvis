@@ -31,7 +31,32 @@ example "Yes sir, opening Spotify."), so never repeat or re-confirm the action a
 simply worked and you have nothing new to add, reply with exactly: [done]
 If the tool returned information the user wanted, give just that information briefly ("CPU is at twelve
 percent."). If it failed or the user declined it, say so plainly. For questions and conversation that
-need no tool, just answer naturally, using "sir" now and then."""
+need no tool, just answer naturally, using "sir" now and then.
+Each message starts with the time and the window the user has in front of them. When they say "this", "it"
+or "here" without saying what, they usually mean that window: use look_at_screen to see it if you need to.
+Check your own work: after a series of on-screen actions (clicking, typing, opening or moving windows) where
+the result matters, look_at_screen once to confirm it actually worked, and fix it if not. Skip this for
+simple actions whose tool result already confirms success.
+Learn from corrections: when the user corrects you or stops you to say what they really meant, and it's a
+lasting preference rather than a one-off (e.g. "Chrome means the window on my right screen", "my resume is
+the PDF, not the Word file"), save it with remember so you get it right next time."""
+
+
+def screen_context() -> str:
+    """'[Current time: ...] [Front window: "title" (App)]' for the start of each message."""
+    parts = [f"Current time: {datetime.now():%A, %B %d, %Y, %I:%M %p}"]
+    try:
+        import win32gui
+
+        from tools import system
+
+        hwnd = win32gui.GetForegroundWindow()
+        window = next((w for w in system._app_windows() if w["hwnd"] == hwnd), None)
+        if window:
+            parts.append(f'Front window: "{window["title"][:80]}" ({system._app_label(window)})')
+    except Exception:
+        pass
+    return " ".join(f"[{p}]" for p in parts)
 
 # "api" bills an Anthropic API key per request; "subscription" goes through Claude Code (`claude -p`)
 # signed in with your Claude plan, and counts against that plan's usage limits.
@@ -56,7 +81,7 @@ def think(conversation_history: list[dict], confirm=None, acknowledge=None) -> s
     """Run one turn. `confirm(question) -> bool` is asked before risky tool calls; without it they're refused."""
     if BACKEND == "subscription":
         return _get_session().ask(conversation_history, confirm, acknowledge)
-    system = f"{SYSTEM_PROMPT}{facts.prompt_section()}\n\nCurrent date and time: {datetime.now():%A, %B %d, %Y, %I:%M %p}."
+    system = f"{SYSTEM_PROMPT}{facts.prompt_section()}\n\n{screen_context()}"
     return _think_api(conversation_history, system, confirm, acknowledge)
 
 
@@ -205,7 +230,7 @@ class ClaudeCodeSession:
         self.bridge.acknowledge = acknowledge
         text = _build_prompt(history) if self._fresh else history[-1]["content"]
         message = json.dumps({"type": "user", "message": {"role": "user", "content": (
-            f"[Current time: {datetime.now():%A, %B %d, %Y, %I:%M %p}]\n{text}")}}) + "\n"
+            f"{screen_context()}\n{text}")}}) + "\n"
         try:
             self._proc.stdin.write(message)
             self._proc.stdin.flush()

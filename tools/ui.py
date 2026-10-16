@@ -26,6 +26,9 @@ RISKY_KEYS = {"alt+f4", "ctrl+w", "ctrl+shift+w", "ctrl+q", "delete", "shift+del
 TERMINALS = {"cmd.exe", "powershell.exe", "pwsh.exe", "windowsterminal.exe", "wt.exe", "bash.exe", "mintty.exe",
              "conhost.exe", "openconsole.exe"}
 MAX_ELEMENTS = 4000
+# Clicks and typing report only that the input was sent, not what happened on screen.
+VERIFY_HINT = ("\n(That only confirms the input was sent: when this is your last step, look_at_screen to check "
+               "it worked.)")
 KEY_NAMES = {
     "enter": 0x0D, "return": 0x0D, "tab": 0x09, "esc": 0x1B, "escape": 0x1B, "space": 0x20, "backspace": 0x08,
     "delete": 0x2E, "del": 0x2E, "insert": 0x2D, "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22,
@@ -213,12 +216,12 @@ def ui_action(action: str, target: str = "", x: float | None = None, y: float | 
             win32api.SetCursorPos((px, py))
             return f"Moved the mouse to {what}."
         _click(px, py, "right" if action == "right_click" else "left", 2 if action == "double_click" else 1)
-        return f"{action.replace('_', ' ').capitalize()}ed {what}."
+        return f"{action.replace('_', ' ').capitalize()}ed {what}.{VERIFY_HINT}"
     if action == "type_text":
         if not text:
             return "Nothing to type."
         _type(text)
-        return f"Typed {len(text)} characters."
+        return f"Typed {len(text)} characters.{VERIFY_HINT}"
     if action == "key_press":
         if len(keys.strip()) == 1 and not keys.strip().isalnum():
             _type(keys.strip())  # a symbol like * or + : typing it presses the right keys for this keyboard
