@@ -128,7 +128,10 @@ def listen_during_task(done: threading.Event, paused: threading.Event) -> str | 
             frames.append(block)
             quiet = 0 if loud else quiet + 1
             if quiet > end_after or len(frames) > longest:
-                text = transcribe(np.concatenate(frames))
+                said = np.concatenate(frames)
+                from voice import speaker
+
+                text = transcribe(said) if speaker.is_user(said)[0] else ""  # others talking don't stop the task
                 frames.clear()
                 loud_run = quiet = 0
                 if text and not done.is_set():

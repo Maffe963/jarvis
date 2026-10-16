@@ -287,7 +287,7 @@ def run_text() -> None:
 def run_voice() -> None:
     import winsound
 
-    from voice import barge_in, mic, select_microphone, stt, wake_word
+    from voice import barge_in, mic, select_microphone, speaker, stt, wake_word
     from voice.stt import record_until_silence, transcribe
     from voice import tts
     from voice.tts import speak
@@ -385,6 +385,11 @@ def run_voice() -> None:
     wake_word._get_model()
     stt._get_model()
     tts.warm_up()
+    if speaker.enrolled() and speaker.available():
+        speaker.embed(stt.np.zeros(32000, dtype=stt.np.float32))  # load the voice model now, not on first use
+        print("Voice lock on: only your voice is answered (JARVIS_VOICE_LOCK=off to disable).")
+    elif speaker.available():
+        print("Tip: run enroll_voice.py once so Jarvis only answers your voice.")
     print(f"Jarvis online (voice mode), listening on: {microphone}")
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")
@@ -448,7 +453,12 @@ def run_voice() -> None:
                         threading.Thread(target=warm_up, daemon=True).start()
                         threading.Thread(target=stt._get_model, daemon=True).start()
                     audio = record_until_silence()
-                heard = clean_transcript(transcribe(audio))
+                mine, score = speaker.is_user(audio) if audio.size else (True, None)
+                if not mine:  # the TV, someone else, a video...
+                    print(f"[ignored: not your voice (match {score:.2f})]")
+                    heard = ""
+                else:
+                    heard = clean_transcript(transcribe(audio))
             in_conversation = FOLLOWUP_SECONDS != 0
             if not heard:
                 print("[nothing heard]")
