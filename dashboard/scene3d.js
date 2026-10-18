@@ -106,7 +106,7 @@ const THEMES = {
   },
 
   village: {
-    background: 0x8fd6ff, bloom: null, shadows: true, home: [[0, 15, 21], [0, -1, 1.5]],
+    background: 0x8fd6ff, bloom: null, shadows: true, home: [[0, 12.5, 17], [0, -1, 1.2]],
     status: { starting: 0xffcf3a, working: 0xffb02e, waiting: 0x6fb8ff, "needs you": 0xff4b3a, done: 0x6fd43a, stopped: 0x9a9a9a, failed: 0xff4b3a },
     world(scene, fx) {
       scene.fog = new THREE.Fog(0x8fd6ff, 35, 80);
@@ -189,6 +189,7 @@ export function createScene(container, hooks) {
   container.appendChild(labels.domElement);
 
   const camera = new THREE.PerspectiveCamera(45, 1, .1, 500);
+  let homeBase = [[0, 8, 12], [0, -.5, 1.2]];
   const HOME = { pos: new THREE.Vector3(0, 10, 15), target: new THREE.Vector3(0, -.5, 1.5) };
   camera.position.copy(HOME.pos);
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -358,10 +359,9 @@ export function createScene(container, hooks) {
       composer.addPass(new OutputPass());
     }
     addNode("jarvis", "jarvis", {}); addNode("user", "user", {});
-    const [pos, target] = theme.home || [[0, 10, 15], [0, -.5, 1.5]];   // each theme's starting view
-    HOME.pos.set(...pos); HOME.target.set(...target);
-    camera.position.copy(HOME.pos); controls.target.copy(HOME.target);
+    homeBase = theme.home || [[0, 8, 12], [0, -.5, 1.2]];   // each theme's starting view (for a wide window)
     resize();
+    camera.position.copy(HOME.pos); controls.target.copy(HOME.target);
   }
 
   // ---- interaction: hover, click, right-click, double-click ----
@@ -510,6 +510,10 @@ export function createScene(container, hooks) {
     renderer.setSize(w, h); labels.setSize(w, h);
     camera.aspect = w / h; camera.updateProjectionMatrix();
     composer?.setSize(w, h);
+    // back the starting view off in narrow windows so the whole team still fits
+    const [pos, target] = homeBase, far = Math.min(1.8, Math.max(1, 1.75 / camera.aspect));
+    HOME.target.set(...target);
+    HOME.pos.set(...pos).sub(HOME.target).multiplyScalar(far).add(HOME.target);
   }
   new ResizeObserver(resize).observe(container);
 
