@@ -5,7 +5,7 @@ is listened to; everyone else is ignored. Risky actions ask you with Yes/No butt
 bot sends what each action actually reported, plus a screenshot when something on screen changed, so you
 can check it was done right.
 
-Commands: /stop (stop the current task), /screenshot [left|right|main|all], /status, /off, /help
+Commands: /stop (stop the current task), /screenshot [left|right|main|all], /status, /dashboard, /off, /help
 """
 import io
 import json
@@ -38,7 +38,8 @@ HELP = ("Message me like you'd talk to Jarvis (text or a voice note), e.g. \"ope
         "or \"what are my top jobs?\".\n\n"
         "After each task I send what actually happened and, if the screen changed, a screenshot.\n\n"
         "/stop - stop what I'm doing\n/screenshot - see your screen (add left, right, main or all)\n"
-        "/status - CPU, memory and open apps\n/off - turn Jarvis off on the PC\n/help - this message")
+        "/status - CPU, memory and open apps\n/dashboard - a link to the agent dashboard\n"
+        "/off - turn Jarvis off on the PC\n/help - this message")
 
 
 # Shown by Telegram when you type "/" or tap the Menu button.
@@ -48,6 +49,7 @@ COMMANDS = [
     ("stop", "Stop what Jarvis is doing"),
     ("screenshot", "See your screen (add left, right, main or all)"),
     ("status", "CPU, memory and open apps"),
+    ("dashboard", "Link to the agent dashboard"),
     ("help", "What Jarvis can do"),
 ]
 
@@ -225,6 +227,14 @@ class PhoneJarvis:
 
             apps = sorted({system._app_label(w) for w in system._app_windows()})
             self.send(f"{system.system_info()}\nOpen apps: {', '.join(apps) or 'none'}")
+        elif command == "/dashboard":
+            from dashboard import server
+
+            link = server.public_url()
+            self.send(f"🖥 Your agent dashboard: {link}\n\nKeep this link private: it controls Jarvis." if link else
+                      "The dashboard only opens on the PC right now. To open it from your phone, install Tailscale on "
+                      "the PC and your phone, run `tailscale serve --bg 8765` on the PC, and put the https address it "
+                      "shows in .env as JARVIS_DASHBOARD_URL. Then restart Jarvis and send /dashboard again.")
         elif command == "/on":
             self.send("Jarvis is already on. 👍")
         elif command == "/off":
