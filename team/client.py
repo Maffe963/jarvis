@@ -12,11 +12,10 @@ import time
 import urllib.error
 import urllib.request
 
-from team import approvals, events
+from team import approvals, events, messages
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FOLDER = os.path.join(ROOT, "memory", "team")
-SERVICE_FILE = os.path.join(FOLDER, "service.json")  # where the running service listens, and its key
+SERVICE_FILE = os.path.join(messages.FOLDER, "service.json")  # where the running service listens, and its key
 MAX_AGENTS = 5
 
 
@@ -78,22 +77,21 @@ _start_lock = threading.Lock()
 def ensure_running(wait_s: float = 20) -> bool:
     """Start the team service if it isn't running (or is running older code). It stays up after Jarvis exits."""
     with _start_lock:
-        running = ping()
-        if running and running.get("version") == code_version():
+        running, version = ping(), code_version()
+        if running and running.get("version") == version:
             return True
         if running:  # Jarvis was updated: restart the service on the new code (agents carry on afterwards)
             try:
                 _request("/shutdown", {})
             except (OSError, ValueError, ConnectionError):
                 pass
-            for _ in range(20):
-                if not ping():
-                    break
+            deadline = time.monotonic() + 30  # it closes each agent's Claude Code first
+            while time.monotonic() < deadline and (ping() or {}).get("pid") == running.get("pid"):
                 time.sleep(0.25)
         _launch()
         deadline = time.monotonic() + wait_s
         while time.monotonic() < deadline:
-            if ping():
+            if (ping() or {}).get("version") == version:
                 return True
             time.sleep(0.3)
         print("[team] the team service didn't start; see memory/team/service.log")

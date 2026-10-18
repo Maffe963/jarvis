@@ -109,9 +109,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if jarvis:
                 missed = messages.for_jarvis(messages.seen())
+                self._write({"type": "missed", "messages": missed})
                 if missed:
                     messages.mark_seen(missed[-1]["id"])
-                self._write({"type": "missed", "messages": missed})
             while True:
                 try:
                     event = listener.get(timeout=15)

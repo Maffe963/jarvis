@@ -10,7 +10,8 @@ import queue
 import threading
 import time
 
-_counter = itertools.count(1)
+# Numbered from the start time, so ids stay unique across restarts and an open dashboard never skips new ones.
+_counter = itertools.count(int(time.time() * 1000))
 _history: list[dict] = []          # recent events, so a newly opened dashboard can catch up
 _listeners: list[queue.Queue] = []
 _lock = threading.Lock()

@@ -83,6 +83,7 @@ class Agent:
         self.status = saved.get("status", "starting")
         self.inbox: list[str] = list(saved.get("inbox", []))
         self._wake = threading.Condition()
+        self._nudged = False  # reminded to get unreviewed work reviewed before wrapping up
         self.cancelled = threading.Event()
         self.log = events.ActivityLog(self.id, saved.get("log"))
         self.result = saved.get("result", "")
@@ -99,7 +100,7 @@ class Agent:
 
     def saved(self) -> dict:
         return {**self.info(), "inbox": list(self.inbox), "history": list(self.history), "log": list(self.log),
-                "review": dict(self.review)}
+                "review": dict(self.review), "ending": self.cancelled.is_set()}
 
     def unreviewed_changes(self) -> bool:
         """Whether it wrote files or ran project commands since its work was last approved."""
@@ -228,8 +229,15 @@ class Agent:
                 alone_since = alone_since if alone_since is not None else waited
                 if waited - alone_since >= ALONE_GRACE_S:
                     break
-        if not self.cancelled.is_set():  # stopped isn't finished
-            self.result = self.result or last_reply or "(finished without a report)"
+        if self.cancelled.is_set():  # stopped isn't finished
+            return None
+        if self.kind == "agent" and self.unreviewed_changes() and not self._nudged:
+            self._nudged = True
+            return ("(You've been waiting with nothing new coming. You wrote files or ran commands that haven't "
+                    "been reviewed: call request_review now, then finish once the Reviewer approves.)")
+        self.result = self.result or last_reply or "(finished without a report)"
+        if self.kind == "agent" and self.unreviewed_changes():
+            self.result += "\n\nNote: this agent wrote files or ran commands that were never reviewed."
         return None
 
     def run(self, resumed: bool = False) -> None:
@@ -277,6 +285,7 @@ class Agent:
             self.session.close()
         if _shutting_down.is_set():
             return
+        self.session.bridge.stop()
         if self.status == "failed":
             _report(self)
         elif self.result:
@@ -312,8 +321,16 @@ def find(name_or_id: str) -> Agent | None:
         next((a for a in reversed(agents) if wanted and wanted in a.name.lower()), None)
 
 
+_reviewer_lock = threading.Lock()
+
+
 def ensure_reviewer() -> Agent | None:
     """The team's Reviewer, started if there isn't one working. None if the team is full."""
+    with _reviewer_lock:  # two agents asking at once still get one Reviewer
+        return _ensure_reviewer()
+
+
+def _ensure_reviewer() -> Agent | None:
     reviewer = next((a for a in active() if a.kind == "reviewer"), None)
     if reviewer is None:
         taken = find(REVIEWER_NAME) and find(REVIEWER_NAME).status not in FINISHED  # e.g. one the user named so
@@ -356,11 +373,14 @@ def deliver(sender: str, to: str, text: str, via: str = "") -> str:
 def save() -> None:
     if _shutting_down.is_set():
         return
-    agents = everyone()
-    finished = [a for a in agents if a.status in FINISHED][-KEEP_FINISHED:]
-    kept = [a.saved() for a in agents if a.status not in FINISHED or a in finished]
     os.makedirs(messages.FOLDER, exist_ok=True)
-    with _save_lock:
+    with _save_lock:  # snapshot and write together, so an older snapshot never overwrites a newer one
+        with _lock:
+            done = [a for a in _agents.values() if a.status in FINISHED]
+            for old in done[:-KEEP_FINISHED]:  # forget long-finished agents
+                del _agents[old.id]
+            agents = list(_agents.values())
+        kept = [a.saved() for a in agents]
         temp = STATE_FILE + ".tmp"
         with open(temp, "w", encoding="utf-8") as f:
             json.dump(kept, f)
@@ -379,6 +399,8 @@ def restore() -> int:
         for item in saved:
             agent = Agent(item["name"], item["role"], item["task"], item)
             _agents[agent.id] = agent
+            if item.get("ending") and agent.status not in FINISHED:  # stopped or finished just before a restart
+                agent.status = "done" if agent.result else "stopped"
             if agent.status not in FINISHED:
                 resumed.append(agent)
     for agent in resumed:
@@ -449,8 +471,6 @@ def agent_result(agent: str) -> str:
 
 def team_messages(agent: str = "", limit: int = 30, updates: bool = False) -> str:
     found = messages.recent(agent, max(1, min(int(limit or 30), 200)), include_updates=updates)
-    if found:
-        messages.mark_seen(found[-1]["id"])
     return messages.describe(found) or ("No messages yet." if not agent else f"No messages to or from '{agent}'.")
 
 

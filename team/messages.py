@@ -18,11 +18,30 @@ _next_id: int | None = None
 
 
 def _read() -> list[dict]:
+    found = []
     try:
         with open(LOG_FILE, "r", encoding="utf-8") as f:
-            return [json.loads(line) for line in f if line.strip()]
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+            for line in f:
+                try:
+                    found.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass  # e.g. half a line from a crash mid-write
+    except FileNotFoundError:
+        pass
+    return found
+
+
+def _end_last_line() -> None:
+    """If a crash left half a line at the end, finish it, so the next message starts on a line of its own."""
+    try:
+        with open(LOG_FILE, "rb+") as f:
+            f.seek(0, os.SEEK_END)
+            if f.tell():
+                f.seek(-1, os.SEEK_END)
+                if f.read(1) != b"\n":
+                    f.write(b"\n")
+    except FileNotFoundError:
+        pass
 
 
 def trim() -> None:
@@ -42,6 +61,7 @@ def add(sender: str, sender_id: str, to: str, to_id: str, text: str, kind: str =
         if _next_id is None:
             existing = _read()
             _next_id = existing[-1]["id"] + 1 if existing else 1
+            _end_last_line()
         message = {"id": _next_id, "time": time.time(), "from": sender, "from_id": sender_id, "to": to,
                    "to_id": to_id, "text": text, "kind": kind, "via": via}
         _next_id += 1

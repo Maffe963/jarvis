@@ -110,10 +110,7 @@ class TeamBot:
         return self.post(text, None, **extra)
 
     def send_file(self, path: str, caption: str = "") -> None:
-        with open(path, "rb") as f:
-            data = f.read()
-        self.api._upload("sendDocument", "document", os.path.basename(path), data, "application/octet-stream",
-                         chat_id=self.chat_id, caption=caption[:1000])
+        self.api.send_document(self.chat_id, path, caption)
 
     def notify(self, text: str) -> None:
         self.post(f"🔔 {text}")
