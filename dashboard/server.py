@@ -25,6 +25,7 @@ _busy = threading.Lock()
 
 
 SETTINGS_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard.json")
+STATIC = {"/scene3d.js": "text/javascript; charset=utf-8"}  # other files the page loads (fixed list, nothing else)
 THEMES = {"command": "Command Center", "village": "Village", "hud": "Stark HUD"}
 
 
@@ -106,6 +107,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             with open(os.path.join(HERE, "index.html"), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif path in STATIC:
+            with open(os.path.join(HERE, path.lstrip("/")), "rb") as f:
+                self._send(200, f.read(), STATIC[path])
         elif path == "/state":
             self._json(snapshot())
         elif path == "/events":

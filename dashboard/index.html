@@ -6,6 +6,10 @@
 <title>Jarvis Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
 <style>
   /* ---------- shared layout ---------- */
   * { box-sizing: border-box; }
@@ -77,6 +81,33 @@
   @keyframes pulse { 0%, 100% { opacity: .35; transform: scale(1); } 50% { opacity: .9; transform: scale(1.12); } }
   @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
   @keyframes glow { 0%, 100% { box-shadow: 0 0 0 transparent; } 50% { box-shadow: 0 0 16px var(--bad); } }
+  /* ---------- 3D view: scene, labels, tooltip, right-click menu ---------- */
+  #scene3d { position: absolute; inset: 0; display: none; }
+  body.three #scene3d { display: block; } body.three #svg { display: none; }
+  .lbl3d { text-align: center; transform: translateY(-6px); pointer-events: none; white-space: nowrap; }
+  .lbl3d .name { font: var(--node-font); font-size: 15px; color: var(--node-label); text-shadow: 0 1px 3px #000c;
+                 display: inline-block; padding: 1px 8px; border-radius: 6px; background: #0009; }
+  .lbl3d .state, .lbl3d .doing { padding: 0 6px; border-radius: 5px; background: #0007; margin-top: 2px; }
+  .lbl3d .name, .lbl3d .state, .lbl3d .doing { display: table; margin-left: auto; margin-right: auto; }  /* stacked, centred */
+  body.village .lbl3d .name, body.village .lbl3d .state, body.village .lbl3d .doing { background: none; }
+  .lbl3d .state { font-size: 12px; color: var(--c, var(--node-sub)); font-weight: 700; text-shadow: 0 1px 3px #000c; }
+  .lbl3d .doing { font-size: 11.5px; color: var(--node-sub); text-shadow: 0 1px 3px #000c; }
+  .lbl3d .bubble { display: inline-block; font-size: 18px; background: #fff; border: 2px solid #4a2c0a; border-radius: 50%;
+                   width: 32px; height: 32px; line-height: 28px; margin-bottom: 2px; animation: bob 1.2s ease-in-out infinite;
+                   font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif; }
+  .lbl3d .badge { font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif; margin-right: 4px; }
+  body.village .lbl3d .name, body.village .lbl3d .state, body.village .lbl3d .doing {
+    -webkit-text-stroke: 3px #3b2208; paint-order: stroke fill; text-shadow: none; }
+  body.hud .lbl3d .name { letter-spacing: .12em; text-shadow: 0 0 8px #4fe3ffaa; }
+  #tip { position: fixed; z-index: 20; pointer-events: none; display: none; max-width: 280px; padding: 8px 11px; border-radius: var(--radius);
+         background: var(--drawer-bg); color: var(--drawer-text); border: var(--drawer-border); font-size: 12.5px; box-shadow: 0 6px 20px #0008; }
+  #tip b { font-size: 13.5px; }
+  #ctx { position: fixed; z-index: 21; display: none; min-width: 170px; padding: 6px; border-radius: var(--radius);
+         background: var(--drawer-bg); border: var(--drawer-border); box-shadow: 0 8px 26px #000a; }
+  #ctx button { display: block; width: 100%; text-align: left; margin: 2px 0; box-shadow: none; }
+  #hint { position: absolute; left: 14px; bottom: 12px; font-size: 11.5px; color: var(--empty-text); background: var(--empty-bg);
+          padding: 4px 9px; border-radius: 8px; opacity: .85; pointer-events: none; }
+  .item { cursor: default; } .item[data-agent]:not([data-agent=""]) { cursor: pointer; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } aside { border-left: none; border-top: var(--border); } }
 
   /* ---------- theme: Command Center (default) ---------- */
@@ -153,10 +184,13 @@
     <span class="chip"><span id="working-word">working</span> <b id="working">0</b></span>
     <span class="chip"><span id="needs-word">needs you</span> <b id="needs">0</b></span>
     <div class="themes" id="themes"></div>
+    <div class="themes"><button id="dim" title="Switch between the 3D and 2D view">3D</button></div>
   </div>
 </header>
 <main>
   <section id="map">
+    <div id="scene3d"></div>
+    <div id="hint">drag to orbit · scroll to zoom · click a unit · right-click for actions · 1/2/3 themes · space spin · esc reset</div>
     <svg id="svg"></svg>
     <div class="empty" id="empty"></div>
     <div id="drawer"></div>
@@ -171,6 +205,8 @@
   <input type="text" id="cmd" autocomplete="off">
   <button id="send">Send</button>
 </footer>
+<div id="tip"></div>
+<div id="ctx"></div>
 <script>
 const TOKEN = new URLSearchParams(location.search).get("token");
 const SVGNS = "http://www.w3.org/2000/svg";
@@ -354,7 +390,8 @@ function grow(circle, to) {
 function applyTheme(key, save) {
   if (!THEMES[key]) key = "command";
   themeKey = key; T = THEMES[key];
-  document.body.className = key;
+  const three = document.body.classList.contains("three");  // keep the 3D/2D choice when the theme changes
+  document.body.className = key + (three ? " three" : "");
   const w = T.words;
   document.getElementById("title").textContent = w.title;
   document.title = w.title;
@@ -366,6 +403,7 @@ function applyTheme(key, save) {
   for (const b of document.querySelectorAll("#themes button")) b.classList.toggle("on", b.dataset.theme === key);
   for (const card of document.querySelectorAll(".approval .who")) card.textContent = `${card.dataset.who} ${w.approval}`;
   if (save) api("/theme", { theme: key });
+  scene3d?.setTheme(key, agents);
   render(); refreshDrawer();
 }
 
@@ -388,7 +426,87 @@ function positions() {
   });
   return pos;
 }
+// ---------- 3D (scene3d.js) with the 2D map as the fallback ----------
+let scene3d = null;
+function counters() {
+  const list = Object.values(agents).map(a => a.info.status);
+  document.getElementById("count").textContent = list.filter(s => !["done", "stopped", "failed"].includes(s)).length;
+  document.getElementById("working").textContent = list.filter(s => s === "working" || s === "starting").length;
+  document.getElementById("needs").textContent = list.filter(s => s === "needs you").length + document.querySelectorAll(".approval").length;
+  document.getElementById("empty").style.display = Object.keys(agents).length ? "none" : "block";
+}
+async function start3D() {
+  try {
+    if (!window.WebGLRenderingContext) throw new Error("no WebGL");
+    const { createScene } = await import(`/scene3d.js?token=${encodeURIComponent(TOKEN)}`);
+    scene3d = createScene(document.getElementById("scene3d"), {
+      theme: () => themeKey, words: () => T.words, statusWord: s => T.statusWord(s), roleIcon,
+      activityOf: id => agents[id]?.activity || "",
+      onHover: showTip, onSelect: id => openDrawer(id), onJarvis: () => document.getElementById("cmd").focus(),
+      onUser: () => { const a = document.querySelector(".approval"); if (a) a.scrollIntoView({ behavior: "smooth" }); },
+      onContext: showMenu,
+    });
+    document.body.classList.add("three");
+    document.getElementById("dim").textContent = "2D";
+    render();
+  } catch (err) {
+    console.warn("3D view unavailable, using 2D:", err);
+    scene3d = null; document.body.classList.remove("three");
+    document.getElementById("dim").textContent = "3D";
+  }
+}
+function toggle3D() {
+  const three = !document.body.classList.contains("three");
+  try { localStorage.setItem("jarvis-3d", three ? "1" : "0"); } catch (e) {}
+  if (three && !scene3d) { start3D(); return; }
+  document.body.classList.toggle("three", three);
+  document.getElementById("dim").textContent = three ? "2D" : "3D";
+  render();
+}
+function showTip(id, x, y) {
+  const tip = document.getElementById("tip");
+  if (!id) { tip.style.display = "none"; return; }
+  let html;
+  if (id === "jarvis") html = `<b>${esc(T.words.jarvis)}</b><br>Leading ${document.getElementById("count").textContent} active. Click to give an order.`;
+  else if (id === "user") html = `<b>${esc(T.words.user)}</b><br>${document.querySelectorAll(".approval").length} waiting for your OK.`;
+  else {
+    const a = agents[id]; if (!a) return;
+    html = `<b>${esc(a.info.name)}</b> · ${esc(T.statusWord(a.info.status))}<br>${esc(a.info.role)}` +
+           (a.activity ? `<br><i>${esc(a.activity)}</i>` : "") + `<br>${(a.steps || []).length} steps · click to open, right-click for actions`;
+  }
+  tip.innerHTML = html; tip.style.display = "block";
+  tip.style.left = Math.min(x + 16, innerWidth - 300) + "px"; tip.style.top = Math.min(y + 16, innerHeight - 120) + "px";
+}
+function showMenu(id, x, y) {
+  const a = agents[id], menu = document.getElementById("ctx"); if (!a) return;
+  const live = !["done", "stopped", "failed"].includes(a.info.status);
+  menu.innerHTML = `<div style="padding:4px 8px;font-weight:800">${esc(a.info.name)}</div>
+    <button data-act="open">Open</button>${live ? '<button data-act="msg">Message…</button>' : ""}
+    ${a.info.result ? '<button data-act="result">Show result</button>' : ""}${live ? '<button class="danger" data-act="stop">Stop</button>' : ""}`;
+  menu.style.display = "block";
+  menu.style.left = Math.min(x, innerWidth - 190) + "px"; menu.style.top = Math.min(y, innerHeight - 180) + "px";
+  menu.onclick = ev => {
+    const act = ev.target.dataset.act; if (!act) return;
+    menu.style.display = "none";
+    openDrawer(id); scene3d?.focus(id);
+    if (act === "msg") setTimeout(() => document.getElementById("dm")?.focus(), 50);
+    if (act === "result") document.getElementById("d-result")?.scrollIntoView({ behavior: "smooth" });
+    if (act === "stop") stopAgent();
+  };
+}
+document.addEventListener("click", ev => { if (!ev.target.closest("#ctx")) document.getElementById("ctx").style.display = "none"; });
+document.addEventListener("keydown", ev => {
+  if (ev.target.tagName === "INPUT") { if (ev.key === "Escape") ev.target.blur(); return; }
+  const keys = Object.keys(THEMES);
+  if (["1", "2", "3"].includes(ev.key) && keys[+ev.key - 1]) applyTheme(keys[+ev.key - 1], true);
+  else if (ev.key === "Escape") { closeDrawer(); scene3d?.reset(); document.getElementById("ctx").style.display = "none"; }
+  else if (ev.key === " ") { ev.preventDefault(); scene3d?.toggleRotate(); }
+  else if (ev.key === "/") { ev.preventDefault(); document.getElementById("cmd").focus(); }
+});
+
 function render() {
+  counters();
+  if (scene3d && document.body.classList.contains("three")) { scene3d.sync(agents); return; }
   layer.edges.innerHTML = ""; layer.nodes.innerHTML = "";
   const pos = positions();
   const line = (a, b, color, toUser) => el("line", { x1: pos[a].x, y1: pos[a].y, x2: pos[b].x, y2: pos[b].y, ...T.edge(color, toUser) }, layer.edges);
@@ -415,6 +533,7 @@ function render() {
   document.getElementById("needs").textContent = list.filter(s => s === "needs you").length + document.querySelectorAll(".approval").length;
 }
 function flyMessage(from, to, color, kind) {
+  if (scene3d && document.body.classList.contains("three")) { scene3d.message(from, to, kind); return; }
   const pos = positions();
   if (!pos[from] || !pos[to]) return;
   const parts = T.particle(layer.dots, color, kind);
@@ -445,6 +564,10 @@ function feed(cls, meta, text, agentId) {
     d.querySelector(".txt").textContent = open ? full.slice(0, 300) + "…" : full;
     ev.target.textContent = open ? "show more" : "show less";
   };
+  if (agentId) d.addEventListener("click", ev => {   // jump to that agent
+    if (ev.target.classList.contains("more") || !agents[agentId]) return;
+    openDrawer(agentId); scene3d?.focus(agentId);
+  });
   box.appendChild(d);
   while (box.children.length > 400) box.firstChild.remove();
   if (selected && agentId && agentId !== selected) d.style.display = "none";
@@ -569,6 +692,10 @@ fetch(`/state?token=${encodeURIComponent(TOKEN)}`).then(r => r.json()).then(stat
   for (const a of state.agents) agents[a.id].info = a;
   for (const p of state.approvals) if (!document.getElementById("ap-" + p.approval)) approvalCard(p);
   render(); connect();
+  document.getElementById("dim").onclick = toggle3D;
+  let want3D = true;
+  try { want3D = localStorage.getItem("jarvis-3d") !== "0"; } catch (e) {}
+  if (want3D) start3D();
 });
 const cmd = document.getElementById("cmd");
 function sendCommand() { const text = cmd.value.trim(); if (!text) return; api("/command", { text }); cmd.value = ""; }
