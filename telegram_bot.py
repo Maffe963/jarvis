@@ -244,10 +244,8 @@ class PhoneJarvis:
             # In the background: restarting the team can take a while and shouldn't hold up reading messages.
             threading.Thread(target=self._restart, args=(arg.strip().lower(),), daemon=True).start()
         elif command == "/off":
-            if self._ask("Turn Jarvis off on the PC?" + ("" if launcher_running() else " You won't be able to "
-                         "reach me from your phone until it's started on the PC again.")):
-                self.send("Turning off. 👋" + (" Send /on when you want me back." if launcher_running() else ""))
-                self.turn_off()
+            # Not on this thread: it's the one that reads your Yes/No tap, so waiting for it here would never end.
+            threading.Thread(target=self._off, daemon=True).start()
         else:
             self.send("I don't know that command. /help shows what I can do.")
 
@@ -268,6 +266,12 @@ class PhoneJarvis:
         os.environ["JARVIS_STARTED_FROM_PHONE"] = "1"  # the new Jarvis says when it's back
         self.send("🔄 Restarting Jarvis. I'll message you when I'm back.")
         updater._restart_after_reply()
+
+    def _off(self) -> None:
+        if self._ask("Turn Jarvis off on the PC?" + ("" if launcher_running() else " You won't be able to "
+                     "reach me from your phone until it's started on the PC again.")):
+            self.send("Turning off. 👋" + (" Send /on when you want me back." if launcher_running() else ""))
+            self.turn_off()
 
     # ---------- doing tasks ----------
 
