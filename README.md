@@ -88,9 +88,30 @@ agent, and approvals have Yes/No buttons. The "All messages" topic shows everyth
 `/new Name | role | task` starts an agent from Telegram, even while Jarvis is off; `/team`, `/stop` and
 `/result` do what they say. Without a team bot, agents' questions and results go to your Jarvis bot chat.
 
+**Coders:** for programming, Jarvis starts coder agents ("get two coders on adding dark mode to my site").
+List the repositories they may work on, and the checks they may run (tests, lint), in `code_repos.json` (copy
+`code_repos.example.json`), and put a GitHub token in `GITHUB_TOKEN` (fine-grained, with Contents and Pull
+requests read/write on those repositories). Each coder works in its own copy of the repository
+(`memory/team/worktrees/`) on its own `agents/...` branch, so several can work at once and your own checkout is
+never touched. They can only change files in that copy and only run the listed checks. When done they push and open
+a pull request; the Reviewer reads it, runs the checks, comments, and merges it into main once it's good (it only
+merges the team's own pull requests, never with failing checks or conflicts). Set `JARVIS_AGENT_MERGE=ask` to
+approve each merge from your phone first. From Telegram: `/code repo | task`.
+
 **Reviews:** when an agent writes files or runs commands, a Reviewer agent (started automatically, read-only)
 checks that work for safety, correctness and efficiency before the agent can hand it in, and sends back
 anything to fix; after 3 rounds the open concerns go in the agent's report.
+
+## The dashboard from your phone
+
+The dashboard only listens on the PC itself. To open it from your phone anywhere, put it on your own private
+network with [Tailscale](https://tailscale.com) (free): install it on the PC and your phone and sign in to both
+with the same account, then on the PC run `tailscale serve --bg 8765`. It shows an address like
+`https://my-pc.tail1234.ts.net`; put that in `.env` as `JARVIS_DASHBOARD_URL` and restart Jarvis. Send `/dashboard`
+to your Jarvis bot (or ask Jarvis to "send me the dashboard link") to get the link. Only your own devices on
+Tailscale can reach it, and the link carries a secret key that stays the same across restarts; keep it private,
+since the dashboard can give Jarvis commands. To change the key, delete `memory/dashboard_token` and restart. The
+dashboard runs while Jarvis is on; when Jarvis is off, use the team's Telegram topics.
 
 ## Starting with Windows
 

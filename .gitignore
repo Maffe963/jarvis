@@ -23,3 +23,5 @@ memory/voice_print.json
 memory/dashboard_history.json
 memory/dashboard.json
 memory/team/
+code_repos.json
+memory/dashboard_token

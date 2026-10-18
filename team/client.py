@@ -107,6 +107,12 @@ def call(function: str, **inputs):
         return f"Couldn't reach the agent team: {e}"
 
 
+def _code_repos() -> list[str]:
+    from team import coding
+
+    return coding.repo_names()
+
+
 def _tag(event: dict) -> dict:
     """The service numbers its events separately from Jarvis's own, so keep the dashboard from mixing them up."""
     return {**event, "id": f"t{event['id']}"} if "id" in event else event
@@ -180,8 +186,8 @@ def follow(say) -> None:
 
 # ---------- Jarvis's tools ----------
 
-def create_agent(name: str, role: str, task: str) -> str:
-    return call("create_agent", name=name, role=role, task=task)
+def create_agent(name: str, role: str, task: str, kind: str = "agent", repo: str = "") -> str:
+    return call("create_agent", name=name, role=role, task=task, kind=kind, repo=repo)
 
 
 def message_agent(agent: str, text: str, via: str = "jarvis") -> str:
@@ -215,6 +221,21 @@ def set_dashboard_theme(theme: str) -> str:
     return server.set_theme(theme)
 
 
+def send_dashboard_link() -> str:
+    from dashboard import server
+    from tools import phone
+
+    link = server.public_url()
+    if not link:
+        return ("The dashboard can only be opened on the PC right now. To open it from the phone, set up Tailscale "
+                "and JARVIS_DASHBOARD_URL (see the README).")
+    bot = phone._bot()
+    if bot is None or bot.chat_id is None:
+        return "Phone control isn't on, so I can't send the link to the phone."
+    bot.send(f"🖥 Your agent dashboard: {link}\n\nKeep this link private: it controls Jarvis.")
+    return "Sent the dashboard link to your phone."
+
+
 def open_dashboard() -> str:
     from dashboard import server
     from tools import system
@@ -237,11 +258,18 @@ TOOLS = [
                        "They keep working even after Jarvis is turned off, and each gets its own Telegram topic "
                        "the user can chat in. Work that writes files or runs commands is automatically checked by "
                        "a Reviewer agent (for safety, correctness and efficiency) before it's handed in, so don't "
-                       "create a reviewer yourself. Give each a short name and complete standalone instructions.",
+                       "create a reviewer yourself. For programming, use kind 'coder' with a repo: a coder works "
+                       "on its own branch, runs the tests, and opens a pull request that the Reviewer reviews and "
+                       "merges. Split a big coding job into separate parts (e.g. backend, frontend, tests) with one "
+                       "coder each; one coder is enough for a small change. Code repositories: "
+                       f"{', '.join(_code_repos()) or 'none set up yet (code_repos.json)'}. "
+                       "Give each a short name and complete standalone instructions.",
         "input_schema": {"type": "object", "properties": {
-            "name": {"type": "string", "description": "Short name, e.g. 'Researcher'"},
+            "name": {"type": "string", "description": "Short name, e.g. 'Researcher' or 'Backend coder'"},
             "role": {"type": "string", "description": "One line: what this agent is responsible for"},
-            "task": {"type": "string", "description": "Full instructions, including who to hand results to"}},
+            "task": {"type": "string", "description": "Full instructions, including who to hand results to"},
+            "kind": {"type": "string", "enum": ["agent", "coder"], "description": "'coder' for programming"},
+            "repo": {"type": "string", "description": "For coders: which code repository"}},
             "required": ["name", "role", "task"]}
     },
     {
@@ -286,11 +314,17 @@ TOOLS = [
     },
     {
         "name": "open_dashboard",
-        "description": "Open the live agent dashboard in the browser.",
+        "description": "Open the live agent dashboard in the browser on the PC.",
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+        "name": "send_dashboard_link",
+        "description": "Send the user's phone the link to the agent dashboard, to open it away from the PC.",
         "input_schema": {"type": "object", "properties": {}, "required": []}
     },
 ]
 
 TOOL_MAP = {"create_agent": create_agent, "message_agent": message_agent, "stop_agent": stop_agent,
             "team_status": team_status, "agent_result": agent_result, "team_messages": team_messages,
-            "open_dashboard": open_dashboard, "set_dashboard_theme": set_dashboard_theme}
+            "open_dashboard": open_dashboard, "set_dashboard_theme": set_dashboard_theme,
+            "send_dashboard_link": send_dashboard_link}

@@ -11,6 +11,10 @@ is reported as events (team/events.py) for the dashboard, the team's Telegram bo
 Work that changes things (files written, project commands run) is checked before it's handed in: the agent can't
 finish until a Reviewer agent, started automatically when needed, has reviewed it for safety, correctness and
 efficiency and approved it (or it has had MAX_REVIEW_ROUNDS tries, in which case the open concerns go in its report).
+
+Coders are agents just for programming (team/coding.py): each works in its own copy of a repository on its own
+branch, runs the repository's checks, and opens a pull request; the Reviewer reviews pull requests and merges the
+good ones into the main branch.
 """
 import json
 import os
@@ -18,7 +22,7 @@ import threading
 import time
 import uuid
 
-from team import approvals, events, messages
+from team import approvals, coding, events, messages
 from tools import system
 
 MAX_AGENTS = 5
@@ -49,7 +53,9 @@ ALONE_GRACE_S = 60  # a waiting agent whose teammates have all finished wraps up
 USER_IDS = ("user", "jarvis", "the user")
 
 # ----- review -----
-CHANGING_TOOLS = ("write_file", "run_project_command")  # using any of these means the work gets reviewed
+# using any of these means the work gets reviewed
+CHANGING_TOOLS = ("write_file", "run_project_command", "write_code", "edit_code", "delete_code", "commit", "push")
+KINDS = ("agent", "coder")  # what Jarvis can start; the Reviewer starts by itself
 MAX_REVIEW_ROUNDS = 3
 REVIEWER_NAME = "Reviewer"
 REVIEWER_ROLE = "Reviews teammates' code and files for safety, correctness and efficiency"
@@ -66,8 +72,25 @@ they wrote or commands they ran. For each request:
    whole huge files when a part would do, code much longer or more complicated than it needs to be.
 Ignore style and personal preference. Then call review_verdict once: approved=true only if there is no safety
 problem and no real bug. Otherwise list each problem as: file, what's wrong, the exact fix. Be brief and specific.
+Code from coders comes as a pull request ("<repository> #<number>"): read it with view_pull_request (its diff,
+checks and whether it can merge), use read_pr_file when you need a whole file, and run_pr_check to run the tests
+and lint yourself. Post your findings on the pull request with comment_on_pull_request too. When it's good: call
+review_verdict with approved=true, then merge_pull_request, and tell the coder it's merged (or why it couldn't be,
+e.g. failing checks or conflicts, so it can fix that). list_pull_requests shows what's open.
 You can't change files yourself. If a teammate disagrees, weigh their reason fairly. When nobody has sent you
 anything new, just end your turn and wait; finish only when asked, with a short summary of what you reviewed."""
+CODER_GUIDE = """
+
+You're a coder. Your workspace is your own copy (a git worktree) of the {repo} repository, on your own branch
+{branch}, made from the latest {base}. Use the code tools, with paths relative to the repository root: list_code,
+search_code and read_code to understand the code before changing it; edit_code for changes (write_code for new
+files); run_check to run the tests and lint, and fix what fails. Keep the change to what your task needs and match
+the style of the code around it. Then commit (a clear message), push, and open_pull_request (what changed, why, and
+how you checked it). Then call request_review with files=["{repo} #<pull request number>"] and a short summary. The
+Reviewer reviews the pull request and merges it into {base} when it's good; if it asks for changes, make them,
+commit and push (the pull request updates), and request_review again. Finish once it's merged, with the pull request
+link in your report. If other coders work on this repository too, stay in your own area and message them before
+touching shared files. You can't push to {base} yourself or change anything outside your workspace."""
 
 
 def _short(text: str, n: int = 160) -> str:
@@ -89,7 +112,8 @@ class Agent:
         self.result = saved.get("result", "")
         self.history: list[dict] = list(saved.get("history", []))
         self.started = saved.get("started", time.time())
-        self.kind = saved.get("kind", "agent")  # or "reviewer"
+        self.kind = saved.get("kind", "agent")  # or "coder" or "reviewer"
+        self.workspace: dict | None = saved.get("workspace")  # a coder's worktree and branch
         # rounds asked for; how much of the log the last request covered, and how much an approval has cleared
         self.review: dict = saved.get("review") or {"rounds": 0, "requested": 0, "cleared": 0, "notes": ""}
         self.session = None
@@ -100,7 +124,7 @@ class Agent:
 
     def saved(self) -> dict:
         return {**self.info(), "inbox": list(self.inbox), "history": list(self.history), "log": list(self.log),
-                "review": dict(self.review), "ending": self.cancelled.is_set()}
+                "review": dict(self.review), "ending": self.cancelled.is_set(), "workspace": self.workspace}
 
     def unreviewed_changes(self) -> bool:
         """Whether it wrote files or ran project commands since its work was last approved."""
@@ -140,7 +164,7 @@ class Agent:
 
         def finish(inputs: dict) -> str:
             report = inputs.get("report", "").strip() or "(no report)"
-            if self.kind == "agent" and self.unreviewed_changes():
+            if self.kind != "reviewer" and self.unreviewed_changes():
                 if self.review["rounds"] < MAX_REVIEW_ROUNDS:
                     return ("Not yet: you wrote files or ran commands, so your work must be reviewed first. Call "
                             "request_review with the files and what you did, end your turn, and finish once the "
@@ -180,8 +204,22 @@ class Agent:
         def team_list(_: dict) -> str:
             return "\n".join(f"{a.name} ({a.role}) - {a.status}" for a in active() if a is not self) or "Just you."
 
+        def logged(name: str, handler):  # so the dashboard shows these steps and the review gate sees changes
+            def run(inputs: dict) -> str:
+                result = handler(inputs)
+                self.log.append(f"{name}: {(str(result).splitlines() or [''])[0][:100]}")
+                return result
+            return run
+
+        extra = {}
+        if self.kind == "coder" and self.workspace:
+            extra = coding.coder_tools(self.workspace)
+        elif self.kind == "reviewer":
+            extra = coding.reviewer_tools(lambda q: approvals.ask(q, self.name, self.id))
+        extra = {name: (schema, logged(name, handler)) for name, (schema, handler) in extra.items()}
+
         text = {"type": "string"}
-        return {
+        return extra | {
             "send_message": ({"name": "send_message", "description": "Send a short message to a teammate (by name) "
                               "or to 'jarvis'. They receive it after their current step.",
                               "input_schema": {"type": "object", "properties": {"to": text, "text": text},
@@ -231,12 +269,12 @@ class Agent:
                     break
         if self.cancelled.is_set():  # stopped isn't finished
             return None
-        if self.kind == "agent" and self.unreviewed_changes() and not self._nudged:
+        if self.kind != "reviewer" and self.unreviewed_changes() and not self._nudged:
             self._nudged = True
             return ("(You've been waiting with nothing new coming. You wrote files or ran commands that haven't "
                     "been reviewed: call request_review now, then finish once the Reviewer approves.)")
         self.result = self.result or last_reply or "(finished without a report)"
-        if self.kind == "agent" and self.unreviewed_changes():
+        if self.kind != "reviewer" and self.unreviewed_changes():
             self.result += "\n\nNote: this agent wrote files or ran commands that were never reviewed."
         return None
 
@@ -247,6 +285,9 @@ class Agent:
         team = ", ".join(f"{a.name} ({a.role})" for a in active() if a is not self) or "none yet"
         prompt = PROMPT.format(name=self.name, role=self.role, team=team)
         allowed = REVIEWER_TOOLS if self.kind == "reviewer" else background.ALLOWED
+        if self.kind == "coder" and self.workspace:
+            prompt += CODER_GUIDE.format(**self.workspace)
+            allowed = {"web_search"}  # everything else it does goes through its workspace's tools
         self.session = brain.ClaudeCodeSession(prompt, allowed, self.cancelled, self.log, self._tools())
         if not resumed or not self.history:
             message = f"Your task from the user (via Jarvis):\n{self.task}"
@@ -286,6 +327,10 @@ class Agent:
         if _shutting_down.is_set():
             return
         self.session.bridge.stop()
+        if self.workspace:
+            note = coding.remove_workspace(self.workspace)
+            if note and self.result:
+                self.result += f"\n\n{note}"
         if self.status == "failed":
             _report(self)
         elif self.result:
@@ -419,19 +464,26 @@ def shutdown() -> None:
 
 # ---------- what Jarvis (and the Telegram bot) can do, through the team service ----------
 
-def create_agent(name: str, role: str, task: str, kind: str = "agent") -> str:
-    """`kind` "reviewer" is the team's Reviewer, which Jarvis doesn't count towards MAX_AGENTS."""
-    if kind == "agent" and len([a for a in active() if a.kind == "agent"]) >= MAX_AGENTS:
+def create_agent(name: str, role: str, task: str, kind: str = "agent", repo: str = "") -> str:
+    """`kind`: "agent", "coder" (works on `repo`, see team/coding.py) or "reviewer" (the team's Reviewer, which
+    doesn't count towards MAX_AGENTS)."""
+    if kind != "reviewer" and len([a for a in active() if a.kind != "reviewer"]) >= MAX_AGENTS:
         return f"There are already {MAX_AGENTS} agents working; stop one first."
     if find(name) and find(name).status not in FINISHED:
         return f"There's already an active agent called {name}; pick another name."
     agent = Agent(name.strip() or "Agent", role.strip(), task.strip(), {"kind": kind})
+    if kind == "coder":
+        workspace = coding.create_workspace(repo, agent.name, agent.id)
+        if isinstance(workspace, str):
+            return workspace
+        agent.workspace = workspace
     with _lock:
         _agents[agent.id] = agent
     events.emit("agent", agent=agent.id, name=agent.name, role=agent.role, task=agent.task)
     save()
     threading.Thread(target=agent.run, daemon=True, name=f"agent-{agent.name}").start()
-    return (f"Created {agent.name} [{agent.id}] ({agent.role}). It's working on it; the dashboard and its "
+    where = f" on branch {agent.workspace['branch']} of {agent.workspace['repo']}" if agent.workspace else ""
+    return (f"Created {agent.name} [{agent.id}] ({agent.role}){where}. It's working on it; the dashboard and its "
             "Telegram topic show its progress.")
 
 

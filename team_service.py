@@ -33,7 +33,8 @@ VERSION = client.code_version()
 
 # What Jarvis can ask the service to do: name -> (function, the inputs it takes)
 CALLS = {
-    "create_agent": (agents.create_agent, ("name", "role", "task")),
+    "create_agent": (lambda name, role, task, kind="agent", repo="": agents.create_agent(
+        name, role, task, kind if kind in agents.KINDS else "agent", repo), ("name", "role", "task", "kind", "repo")),
     "message_agent": (agents.message_agent, ("agent", "text", "via")),
     "stop_agent": (agents.stop_agent, ("agent",)),
     "team_status": (agents.team_status, ()),

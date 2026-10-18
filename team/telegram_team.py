@@ -26,11 +26,12 @@ STATE_FILE = os.path.join(messages.FOLDER, "telegram.json")  # the group, and wh
 HELP = ("This is your agent team. Each agent gets its own topic here: whatever you write in it goes to that "
         "agent, and the 📜 All messages topic shows everything they say to each other.\n\n"
         "/new Name | role | task - start an agent (or just /new task)\n"
+        "/code repo | task - start a coder on one of your code repositories\n"
         "/team - what each agent is doing\n"
         "/stop - in an agent's topic, stop it (or /stop name, /stop all)\n"
         "/result - in an agent's topic, its final result (or /result name)\n"
         "/help - this message")
-COMMANDS = [("new", "Start an agent: Name | role | task"), ("team", "What each agent is doing"),
+COMMANDS = [("new", "Start an agent: Name | role | task"), ("code", "Start a coder: repo | task"), ("team", "What each agent is doing"),
             ("stop", "Stop this agent (or: /stop name, /stop all)"), ("result", "This agent's final result"),
             ("help", "How the team chat works")]
 MARKS = {"done": "✅", "failed": "⚠️", "stopped": "⏹"}
@@ -319,6 +320,17 @@ class TeamBot:
             else:
                 name, role, task = f"Agent {len(agents.everyone()) + 1}", "Works on the task it was given", arg
             self._reply(message, agents.create_agent(name, role, task))
+        elif command == "/code":
+            repo, _, task = arg.partition("|")
+            if not task.strip():
+                from team import coding
+
+                self._reply(message, "Say which repository and what to do: /code repo | task. Repositories: "
+                                     f"{', '.join(coding.repo_names()) or 'none yet (code_repos.json)'}.")
+                return
+            coders = sum(a.kind == "coder" for a in agents.everyone())
+            self._reply(message, agents.create_agent(f"Coder {coders + 1}", "Writes code for the task it was given",
+                                                     task.strip(), kind="coder", repo=repo.strip()))
         elif command == "/stop":
             target = arg or (here.id if here else "")
             self._reply(message, agents.stop_agent(target) if target else "Stop which agent? /stop name, or /stop all.")
