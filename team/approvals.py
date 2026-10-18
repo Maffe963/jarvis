@@ -1,5 +1,7 @@
 """Yes/no questions from agents (or dashboard commands) that need the user: shown on the dashboard and, if phone
-control is on, sent to the phone too. Whichever is answered first counts; no answer in time means no."""
+control is on, sent to the phone too. Whichever is answered first counts; no answer in time means no.
+
+In the team service the team's Telegram bot puts agents' questions in their own topic instead (phone_prompts off)."""
 import threading
 import uuid
 
@@ -8,15 +10,16 @@ from team import events
 TIMEOUT_S = 600
 _pending: dict[str, dict] = {}
 _lock = threading.Lock()
+phone_prompts = True  # also ask through Jarvis's phone bot
 
 
-def ask(question: str, who: str = "jarvis") -> bool:
+def ask(question: str, who: str = "jarvis", agent: str = "") -> bool:
     approval_id = uuid.uuid4().hex[:8]
     done, answer = threading.Event(), []
     with _lock:
         _pending[approval_id] = {"question": question, "who": who, "done": done, "answer": answer}
-    events.emit("approval", approval=approval_id, who=who, question=question)
-    phone = _phone()
+    events.emit("approval", approval=approval_id, who=who, question=question, agent=agent)
+    phone = _phone() if phone_prompts else None
     if phone:
         threading.Thread(target=lambda: decide(approval_id, phone._ask(f"({who}) {question}")), daemon=True).start()
     done.wait(TIMEOUT_S)

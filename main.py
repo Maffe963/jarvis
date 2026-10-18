@@ -239,6 +239,14 @@ def start_dashboard() -> None:
     server.start(respond)
 
 
+def start_team(say) -> None:
+    """The agent team runs in its own process (team_service.py) so it carries on while Jarvis is off. Start it if
+    it isn't running, and pass on what it does: `say` tells the user about announcements and missed messages."""
+    from team import client
+
+    client.follow(say)
+
+
 def run_remote() -> None:
     """Phone control only: no microphone or speech, just the Telegram bot (and timers/reminders to the phone)."""
     warm_up()
@@ -248,6 +256,7 @@ def run_remote() -> None:
         return
     set_announcer(lambda msg: (print(f"Jarvis: {msg}"), phone.notify(msg)))
     start_dashboard()
+    start_team(lambda msg: print(f"Jarvis: {msg}"))  # the team service messages the phone itself
     reminders.start()
     exit_when_asked()
     print("Jarvis online (phone only). Message your bot on Telegram. Ctrl+C to quit.")
@@ -261,6 +270,7 @@ def run_remote() -> None:
 def run_text() -> None:
     warm_up()
     reminders.start()
+    start_team(lambda msg: print(f"\nJarvis: {msg}"))
     print("Jarvis online (text mode). Type 'quit' to exit.\n")
     history = load_history()
     try:
@@ -405,6 +415,7 @@ def run_voice() -> None:
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")
     reminders.start()
+    start_team(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg)))
     exit_when_asked()
 
     def beep(freq: int) -> None:

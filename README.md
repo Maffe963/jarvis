@@ -67,6 +67,27 @@ Names are looked up in `contacts.json` (copy `contacts.example.json`), or just t
 email as ...". Discord IDs come from right-clicking a user or channel with Developer Mode on (Discord
 Settings > Advanced).
 
+## Agent team
+
+Ask Jarvis to put agents on a bigger job ("get a researcher and a writer on a report about home batteries").
+Each agent is its own Claude conversation with a role; they message each other, ask you when they need a
+decision, and finish with a report. Say "open the dashboard" to watch them live.
+
+The team runs in its own process (`team_service.py`), which Jarvis starts when it isn't running and which
+keeps going after Jarvis turns off, so agents carry on working and talking to each other. Agents, their
+conversations and every message are saved in `memory/team/`, so they also pick up again after a restart.
+Jarvis can read every message the agents sent or received ("what has the team been saying?"), and when it
+comes back on it tells you what the team sent while it was away. To have the team start at sign-in even
+when Jarvis doesn't: `.venv/Scripts/python.exe startup.py install-team`.
+
+**Each agent's own Telegram chat:** create a second bot with @BotFather and put its token in
+`TEAM_TELEGRAM_BOT_TOKEN` (it also needs `TELEGRAM_ALLOWED_USER_ID`). Make a Telegram group, turn on Topics in
+its settings, add the bot as an admin that can manage topics, and send `/setup` in the group. Every new agent
+then gets its own topic with its task, messages, updates and result; whatever you write there goes to that
+agent, and approvals have Yes/No buttons. The "All messages" topic shows everything agents say to each other.
+`/new Name | role | task` starts an agent from Telegram, even while Jarvis is off; `/team`, `/stop` and
+`/result` do what they say. Without a team bot, agents' questions and results go to your Jarvis bot chat.
+
 ## Starting with Windows
 
 ```bash
@@ -115,5 +136,8 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
 - `brain.py`: talks to Claude (API or Claude Code)
 - `mcp_server.py`, `tools/bridge.py`: let Claude Code call Jarvis's tools in subscription mode
 - `tools/`: everything Jarvis can do (`registry.py` lists them)
+- `team_service.py`, `team/`: the agent team, its message log and its Telegram topics; `team/client.py` is
+  Jarvis's side of it
+- `dashboard/`: the live agent dashboard
 - `voice/`: microphone, wake word, speech to text, text to speech
 - `memory/`: conversation history (`history.json`, not committed)

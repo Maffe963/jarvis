@@ -22,3 +22,4 @@ memory/models/
 memory/voice_print.json
 memory/dashboard_history.json
 memory/dashboard.json
+memory/team/
