@@ -20,7 +20,7 @@ JARVIS_MUTEX = "Local\\JarvisVoiceAssistant"   # held by a running Jarvis (see t
 LAUNCHER_MUTEX = "Local\\JarvisLauncher"
 POLL_S = 10  # short polls, so Jarvis's own bot can take over quickly once it starts
 HELP = ("Jarvis is off right now.\n\n/on - turn Jarvis on (voice and phone)\n"
-        "/on phone - phone control only, microphone stays off")
+        "/on phone - phone control only, microphone stays off\n/restart - same as /on while Jarvis is off")
 
 
 def _env() -> dict:
@@ -88,7 +88,7 @@ def main() -> None:
             if (message.get("from") or {}).get("id") != me:
                 continue  # only you
             text = (message.get("text") or "").strip().lower()
-            if text.startswith("/on"):
+            if text.startswith(("/on", "/restart")):
                 phone_only = "phone" in text
                 api.call("getUpdates", offset=offset, timeout=0)  # mark it handled before Jarvis's bot starts
                 api.call("sendMessage", chat_id=me, text="Starting Jarvis" + (" (phone only, mic off)" if phone_only else "")

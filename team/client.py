@@ -98,6 +98,21 @@ def ensure_running(wait_s: float = 20) -> bool:
         return False
 
 
+def restart_service() -> bool:
+    """Stop the team service and start it again (agents carry on). True once it's back."""
+    with _start_lock:
+        running = ping()
+        if running:
+            try:
+                _request("/shutdown", {})
+            except (OSError, ValueError, ConnectionError):
+                pass
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline and (ping() or {}).get("pid") == running.get("pid"):
+                time.sleep(0.25)
+    return ensure_running()
+
+
 def call(function: str, **inputs):
     if not ensure_running():
         return "The agent team couldn't be started (see memory/team/service.log)."
