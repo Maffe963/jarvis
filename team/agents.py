@@ -256,6 +256,12 @@ def agent_result(agent: str) -> str:
     return f"{a.name} ({a.status}):\n{a.result}" if a.result else f"{a.name} hasn't finished yet ({a.status})."
 
 
+def set_dashboard_theme(theme: str) -> str:
+    from dashboard import server
+
+    return server.set_theme(theme)
+
+
 def open_dashboard() -> str:
     from dashboard import server
 
@@ -302,6 +308,12 @@ TOOLS = [
         "input_schema": {"type": "object", "properties": {"agent": text}, "required": ["agent"]}
     },
     {
+        "name": "set_dashboard_theme",
+        "description": "Change the agent dashboard's look: 'command' (Command Center, default), 'village' (a "
+                       "cartoon village-builder island) or 'hud' (Stark-style holographic HUD).",
+        "input_schema": {"type": "object", "properties": {"theme": text}, "required": ["theme"]}
+    },
+    {
         "name": "open_dashboard",
         "description": "Open the live agent dashboard in the browser.",
         "input_schema": {"type": "object", "properties": {}, "required": []}
@@ -309,4 +321,5 @@ TOOLS = [
 ]
 
 TOOL_MAP = {"create_agent": create_agent, "message_agent": message_agent, "stop_agent": stop_agent,
-            "team_status": team_status, "agent_result": agent_result, "open_dashboard": open_dashboard}
+            "team_status": team_status, "agent_result": agent_result, "open_dashboard": open_dashboard,
+            "set_dashboard_theme": set_dashboard_theme}

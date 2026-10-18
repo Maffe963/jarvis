@@ -24,13 +24,43 @@ _history: list[dict] = []
 _busy = threading.Lock()
 
 
+SETTINGS_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard.json")
+THEMES = {"command": "Command Center", "village": "Village", "hud": "Stark HUD"}
+
+
+def theme() -> str:
+    try:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            value = json.load(f).get("theme", "command")
+    except (FileNotFoundError, json.JSONDecodeError):
+        value = "command"
+    return value if value in THEMES else "command"
+
+
+def set_theme(name: str) -> str:
+    """Switch the dashboard's look (any open dashboard changes at once)."""
+    filler = {"mode", "theme", "style", "look", "the", "dashboard", "skin", "view"}  # "village mode" -> "village"
+    wanted = " ".join(w for w in name.lower().split() if w not in filler).strip() or name.lower().strip()
+    key = next((k for k, label in THEMES.items() if wanted in (k, label.lower()) or wanted in label.lower()
+                or (wanted in ("clash", "clash of clans", "coc", "town", "castle") and k == "village")
+                or (wanted in ("iron man", "stark", "jarvis", "hologram") and k == "hud")
+                or (wanted in ("default", "normal", "original", "classic") and k == "command")), None)
+    if key is None:
+        return f"No dashboard theme like '{name}'. Themes: {', '.join(THEMES.values())}."
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"theme": key}, f)
+    events.emit("theme", theme=key)
+    return f"Dashboard theme set to {THEMES[key]}."
+
+
 def url() -> str | None:
     return f"http://127.0.0.1:{PORT}/?token={TOKEN}" if _server else None
 
 
 def snapshot() -> dict:
     return {"agents": [a.info() for a in agents.everyone()], "approvals": approvals.pending(),
-            "events": events.recent()[-400:], "max_agents": agents.MAX_AGENTS}
+            "events": [e for e in events.recent() if e["type"] != "theme"][-400:], "max_agents": agents.MAX_AGENTS,
+            "theme": theme(), "themes": THEMES}
 
 
 def _command(text: str) -> None:
@@ -125,6 +155,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"result": agents.message_agent(body.get("agent", ""), body.get("text", ""))})
         elif path == "/stop":
             self._json({"result": agents.stop_agent(body.get("agent", ""))})
+        elif path == "/theme":
+            self._json({"result": set_theme(body.get("theme", ""))})
         elif path == "/approve":
             self._json({"ok": approvals.decide(body.get("approval", ""), bool(body.get("yes")))})
         else:
