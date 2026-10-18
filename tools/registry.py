@@ -182,6 +182,7 @@ def ack_phrase(name: str, inputs: dict) -> str:
         "ui_action": lambda: "on it",
         "remember": lambda: "noted",
         "send_to_phone": lambda: "sending that to your phone",
+        "send_screenshot": lambda: "sending you a screenshot",
         "spotify_play": lambda: f"playing {inputs.get('query') or 'your music'}",
         "spotify_control": lambda: {"pause": "pausing", "resume": "resuming", "next": "skipping",
                                     "previous": "going back"}.get(inputs.get("action"), "on it"),
