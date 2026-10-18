@@ -27,13 +27,16 @@ _busy = threading.Lock()
 SETTINGS_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard.json")
 STATIC = {"/scene3d.js": "text/javascript; charset=utf-8"}  # other files the page loads (fixed list, nothing else)
 THEMES = {"command": "Command Center", "village": "Village", "hud": "Stark HUD", "synthwave": "Synthwave",
-          "galaxy": "Deep Space", "matrix": "Mainframe"}
+          "galaxy": "Deep Space", "matrix": "Mainframe", "abyss": "The Abyss", "forge": "Dragon Forge", "aurora": "Aurora"}
 NICKNAMES = {"village": ("clash", "clash of clans", "coc", "town", "castle"),
              "hud": ("iron man", "stark", "jarvis", "hologram"),
              "command": ("default", "normal", "original", "classic", "war room", "tactical", "war table"),
              "synthwave": ("synth", "neon", "retro", "outrun", "80s", "eighties", "vaporwave", "retrowave"),
              "galaxy": ("space", "galaxy", "planets", "cosmos", "solar system", "stars", "universe"),
-             "matrix": ("matrix", "hacker", "code", "terminal", "cyber", "digital rain")}
+             "matrix": ("matrix", "hacker", "code", "terminal", "cyber", "digital rain"),
+             "abyss": ("ocean", "underwater", "sea", "deep sea", "water", "submarine", "jellyfish"),
+             "forge": ("volcano", "lava", "fire", "dragon", "fantasy", "medieval"),
+             "aurora": ("snow", "ice", "winter", "arctic", "frost", "northern lights", "frozen")}
 
 
 def theme() -> str:

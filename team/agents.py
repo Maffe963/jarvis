@@ -312,7 +312,9 @@ TOOLS = [
         "description": "Change the agent dashboard's look: 'command' (Command Center, a tactical war table, default), "
                        "'village' (a cartoon village-builder island), 'hud' (Stark-style holographic HUD), "
                        "'synthwave' (80s neon drive), 'galaxy' (Deep Space: a star, planets and a station) or "
-                       "'matrix' (Mainframe: digital rain and server monoliths).",
+                       "'matrix' (Mainframe: digital rain and server monoliths), 'abyss' (The Abyss: glowing "
+                       "jellyfish in the deep sea), 'forge' (Dragon Forge: lava and a dragon egg) or 'aurora' "
+                       "(snowy night under the northern lights).",
         "input_schema": {"type": "object", "properties": {"theme": text}, "required": ["theme"]}
     },
     {

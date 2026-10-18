@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jarvis Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barlow+Condensed:wght@500;700&family=Black+Ops+One&family=Exo+2:wght@500;700&family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barlow+Condensed:wght@500;700&family=Black+Ops+One&family=Cinzel:wght@600;800&family=Quicksand:wght@500;700&family=Exo+2:wght@500;700&family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
@@ -28,6 +28,9 @@
   .themes { display: flex; gap: 4px; padding: 3px; border-radius: var(--chip-radius); background: var(--chip-bg); border: var(--chip-border); }
   .themes button { padding: 4px 10px; font-size: 12px; border: none; background: none; color: var(--muted); box-shadow: none; }
   .themes button.on, body .themes button.on { background: var(--accent); color: var(--accent-text); }
+  .themes select { background: var(--accent); color: var(--accent-text); border: none; border-radius: var(--chip-radius); padding: 4px 8px;
+                   font: 700 12px var(--font); cursor: pointer; outline: none; }
+  .themes select option { background: #fff; color: #111; }
   .emoji { font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
   main { display: grid; grid-template-columns: 1fr 390px; min-height: 0; }
   #map { position: relative; min-height: 0; overflow: hidden; background: var(--map-bg); }
@@ -237,6 +240,61 @@
   body.matrix button.danger { color: #ff3355; border-color: #ff3355; }
   @keyframes blink { 50% { opacity: 0; } }
 
+  /* ---------- theme: The Abyss (deep sea) ---------- */
+  body.abyss {
+    --font: "Exo 2", "Segoe UI", sans-serif; --bg: #00121a; --text: #d6fbff; --muted: #5fa3b0; --accent: #3dfcff; --accent-text: #001a20;
+    --good: #7dffb2; --bad: #ff4fa3; --you: #ffd84a; --msg: #9ff8ff; --line: #0b3440;
+    --title-font: 700 19px var(--font); --title-spacing: .22em; --title-shadow: 0 0 12px #3dfcff88; --section-font: 700 11px var(--font);
+    --border: 1px solid #0b3440; --header-bg: linear-gradient(180deg, #003a4d, #00121a); --chip-border: 1px solid #0f4a5a;
+    --chip-radius: 14px; --chip-bg: #001a24; --map-bg: linear-gradient(180deg, #003a4d, #00121a 70%);
+    --empty-text: #d6fbff; --empty-bg: #001a24cc; --panel: #00151e; --radius: 14px; --radius-lg: 20px;
+    --approval-border: 1px solid #ff4fa3; --approval-bg: #2a0a1e; --item-radius: 12px; --item-bg: #002230; --item-text: #d6fbff;
+    --item-meta: #5fa3b0; --item-shadow: none; --item-jarvis-bg: #003040; --footer-bg: #00151e; --input-bg: #000d14;
+    --input-border: 1px solid #0f4a5a; --input-text: #d6fbff; --focus: #3dfcff33; --placeholder: #3d7380;
+    --btn-bg: #00475a; --btn-text: #d6fbff; --btn-border: 1px solid #1a7a90; --btn-shadow: 0 0 12px #3dfcff33; --btn-danger: #4a0f30;
+    --btn-good: #0d4a34; --drawer-bg: #001a24ee; --drawer-border: 1px solid #1a7a90; --drawer-text: #d6fbff; --drawer-muted: #5fa3b0;
+    --drawer-shadow: 0 0 40px #3dfcff22; --drawer-title-font: 700 20px var(--font); --pre-bg: #000d14; --pre-border: 1px solid #0b3440;
+    --step-line: #0b3440; --node-label: #fff; --node-sub: #b5f2ff; --node-font: 700 14px var(--font);
+  }
+
+  /* ---------- theme: Dragon Forge ---------- */
+  body.forge {
+    --font: "Nunito", "Segoe UI", sans-serif; --bg: #120604; --text: #ffe9d6; --muted: #b07a5a; --accent: #ff7a1a; --accent-text: #1a0800;
+    --good: #ffd84a; --bad: #ff2a2a; --you: #ffb347; --msg: #ffb347; --line: #3a1a10;
+    --title-font: 800 21px "Cinzel", serif; --title-spacing: .12em; --title-shadow: 0 0 14px #ff7a1a99, 0 2px 0 #000;
+    --section-font: 800 12px "Cinzel", serif;
+    --border: 1px solid #4a2010; --header-bg: linear-gradient(180deg, #2a0c06, #120604); --chip-border: 1px solid #5a2a14;
+    --chip-radius: 4px; --chip-bg: #1e0a05; --map-bg: radial-gradient(circle at 50% 60%, #3a1206 0, #120604 70%);
+    --empty-text: #ffe9d6; --empty-bg: #1e0a05cc; --panel: #170704; --radius: 6px; --radius-lg: 10px;
+    --approval-border: 1px solid #ff2a2a; --approval-bg: #2e0806; --item-radius: 4px; --item-bg: #200c06; --item-text: #ffe9d6;
+    --item-meta: #b07a5a; --item-shadow: inset 0 -1px 0 #3a1a10; --item-jarvis-bg: #2e1408; --footer-bg: #170704; --input-bg: #0e0403;
+    --input-border: 1px solid #5a2a14; --input-text: #ffe9d6; --focus: #ff7a1a33; --placeholder: #7a4a30;
+    --btn-bg: linear-gradient(180deg, #ff8a2a, #c94a0a); --btn-text: #1a0800; --btn-border: 1px solid #ff9a4a; --btn-shadow: 0 0 14px #ff7a1a55;
+    --btn-danger: #7a1010; --btn-good: #8a6a10; --drawer-bg: #1a0805f2; --drawer-border: 1px solid #ff7a1a88; --drawer-text: #ffe9d6;
+    --drawer-muted: #b07a5a; --drawer-shadow: 0 0 40px #ff5a1a33; --drawer-title-font: 800 20px "Cinzel", serif; --pre-bg: #0e0403;
+    --pre-border: 1px solid #3a1a10; --step-line: #3a1a10; --node-label: #fff1e0; --node-sub: #ffc79a; --node-font: 800 14px "Cinzel", serif;
+  }
+  body.forge header { border-bottom: 2px solid #ff7a1a; box-shadow: 0 0 22px #ff5a1a55; }
+  body.forge button.danger, body.forge button.good { color: #ffe9d6; }
+
+  /* ---------- theme: Aurora (frozen night) ---------- */
+  body.aurora {
+    --font: "Quicksand", "Segoe UI", sans-serif; --bg: #050b1e; --text: #eaf4ff; --muted: #8aa4c8; --accent: #5cffc8; --accent-text: #022018;
+    --good: #fff1a8; --bad: #ff5c8a; --you: #ffd36b; --msg: #bfe9ff; --line: #1a2a4a;
+    --title-font: 700 19px var(--font); --title-spacing: .26em; --title-shadow: 0 0 14px #5cffc8aa; --section-font: 700 11px var(--font);
+    --border: 1px solid #1a2a4a; --header-bg: linear-gradient(90deg, #0a1a3a, #050b1e, #1a0a3a); --chip-border: 1px solid #24406a;
+    --chip-radius: 999px; --chip-bg: #08122a; --map-bg: linear-gradient(180deg, #0a1a3a, #050b1e 55%, #c8d8ee22);
+    --empty-text: #eaf4ff; --empty-bg: #08122acc; --panel: #070f24; --radius: 12px; --radius-lg: 18px;
+    --approval-border: 1px solid #ff5c8a; --approval-bg: #241028; --item-radius: 10px; --item-bg: #0c1834; --item-text: #eaf4ff;
+    --item-meta: #8aa4c8; --item-shadow: none; --item-jarvis-bg: #0e2238; --footer-bg: #070f24; --input-bg: #040a1a;
+    --input-border: 1px solid #24406a; --input-text: #eaf4ff; --focus: #5cffc833; --placeholder: #56709a;
+    --btn-bg: linear-gradient(90deg, #2bd6a4, #7b6bff); --btn-text: #031018; --btn-border: none; --btn-shadow: 0 0 14px #5cffc844;
+    --btn-danger: #5a1430; --btn-good: #2a6a5a; --drawer-bg: #08122aee; --drawer-border: 1px solid #5cffc866; --drawer-text: #eaf4ff;
+    --drawer-muted: #8aa4c8; --drawer-shadow: 0 0 40px #5cffc822; --drawer-title-font: 700 20px var(--font); --pre-bg: #040a1a;
+    --pre-border: 1px solid #1a2a4a; --step-line: #1a2a4a; --node-label: #fff; --node-sub: #cfe6ff; --node-font: 700 14px var(--font);
+  }
+  body.aurora button.danger, body.aurora button.good { color: #fff; }
+
   /* what's being said, riding along a message beam */
   .msg3d { pointer-events: none; width: max-content; max-width: 240px; white-space: normal; text-align: center; font: 12px/1.35 var(--font);
            padding: 4px 9px; border-radius: 8px; color: #fff; background: #000c; border: 1px solid var(--c); box-shadow: 0 0 14px var(--c); }
@@ -252,7 +310,7 @@
     <span class="chip"><span id="agents-word">agents</span> <b id="count">0</b>/<b id="max">5</b></span>
     <span class="chip"><span id="working-word">working</span> <b id="working">0</b></span>
     <span class="chip"><span id="needs-word">needs you</span> <b id="needs">0</b></span>
-    <div class="themes" id="themes"></div>
+    <label class="themes" title="Theme (keys 1-9)"><select id="themes"></select></label>
     <div class="themes"><button id="dim" title="Switch between the 3D and 2D view">3D</button>
       <button id="wide" title="Expand the map to fill the window (F); double-click for full screen">Expand</button></div>
   </div>
@@ -502,6 +560,46 @@ const THEMES = {
     shape: (g, kind, r, attrs) => kind === "agent" ? el("rect", { x: -r * .6, y: -r, width: r * 1.2, height: r * 2, ...attrs }, g)
       : el("polygon", { points: `0,${-r} ${r},0 0,${r} ${-r},0`, ...attrs }, g),
   }),
+
+  abyss: neonTheme({
+    words: { title: "JARVIS · THE ABYSS", jarvis: "JARVIS", user: "Submarine", agents: "creatures", working: "glowing",
+             needs: "signaling", feed: "SONAR LOG", send: "Ping", placeholder: "Send a ping to Jarvis...",
+             empty: 'The deep is dark and quiet. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "signals for your OK" },
+    status: { starting: "#3dfcff", working: "#3dfcff", waiting: "#8a7dff", "needs you": "#ff4fa3", done: "#7dffb2", stopped: "#1c3a44", failed: "#ff4fa3" },
+    words2: { starting: "hatching", working: "glowing", waiting: "drifting", "needs you": "signaling you", done: "surfaced",
+              stopped: "sank", failed: "lost in the dark" },
+    fill: "#002230", done: "#7dffb2", glow: true,
+    shape: (g, kind, r, attrs) => kind === "user" ? el("ellipse", { rx: r * 1.2, ry: r * .6, ...attrs }, g)
+      : el("path", { d: `M${-r} ${r * .3} A${r} ${r} 0 0 1 ${r} ${r * .3} Z`, ...attrs }, g),   // a jellyfish bell
+  }),
+
+  forge: neonTheme({
+    words: { title: "JARVIS · DRAGON FORGE", jarvis: "JARVIS", user: "Your Blade", agents: "smiths", working: "forging",
+             needs: "need you", feed: "FORGE LOG", send: "Strike", placeholder: "Command the forge...",
+             empty: 'The forge is cold. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "awaits your seal" },
+    status: { starting: "#ffb347", working: "#ff7a1a", waiting: "#9a8f88", "needs you": "#ff2a2a", done: "#ffd84a", stopped: "#3a2a26", failed: "#ff2a2a" },
+    words2: { starting: "stoking", working: "forging", waiting: "cooling", "needs you": "needs you", done: "tempered",
+              stopped: "doused", failed: "shattered" },
+    fill: "#200c06", done: "#ffd84a", glow: true,
+    shape: (g, kind, r, attrs) => kind === "jarvis" ? el("ellipse", { rx: r * .8, ry: r, ...attrs }, g)   // the egg
+      : kind === "user" ? el("polygon", { points: `0,${-r} ${r * .9},${r * .8} ${-r * .9},${r * .8}`, ...attrs }, g)
+      : el("polygon", { points: hexPoints(r).split(" ").filter((_, i) => i !== 4).join(" "), ...attrs }, g),
+  }),
+
+  aurora: neonTheme({
+    words: { title: "JARVIS · AURORA", jarvis: "JARVIS", user: "Cabin", agents: "crystals", working: "shimmering",
+             needs: "need you", feed: "FROST LOG", send: "Send", placeholder: "Whisper an order to Jarvis...",
+             empty: 'A still, frozen night. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "asks for your blessing" },
+    status: { starting: "#5cffc8", working: "#5cffc8", waiting: "#a58cff", "needs you": "#ff5c8a", done: "#fff1a8", stopped: "#3a4660", failed: "#ff5c8a" },
+    words2: { starting: "forming", working: "shimmering", waiting: "frozen", "needs you": "needs you", done: "radiant",
+              stopped: "melted", failed: "cracked" },
+    fill: "#0c1834", done: "#fff1a8", glow: true,
+    shape: (g, kind, r, attrs) => kind === "user" ? el("polygon", { points: `0,${-r} ${r},${-r * .1} ${r * .8},${r * .8} ${-r * .8},${r * .8} ${-r},${-r * .1}`, ...attrs }, g)
+      : el("polygon", { points: `0,${-r * 1.15} ${r * .6},0 0,${r * 1.15} ${-r * .6},0`, ...attrs }, g),   // a crystal
+  }),
 };
 let T = THEMES.command, themeKey = "command";
 
@@ -528,7 +626,7 @@ function applyTheme(key, save) {
   document.getElementById("send").textContent = w.send;
   document.getElementById("cmd").placeholder = w.placeholder;
   document.getElementById("empty").textContent = w.empty;
-  for (const b of document.querySelectorAll("#themes button")) b.classList.toggle("on", b.dataset.theme === key);
+  document.getElementById("themes").value = key;
   for (const card of document.querySelectorAll(".approval .who")) card.textContent = `${card.dataset.who} ${w.approval}`;
   if (save) api("/theme", { theme: key });
   scene3d?.setTheme(key, agents);
@@ -635,6 +733,8 @@ function showMenu(id, x, y) {
 document.addEventListener("click", ev => { if (!ev.target.closest("#ctx")) document.getElementById("ctx").style.display = "none"; });
 document.addEventListener("keydown", ev => {
   if (ev.target.tagName === "INPUT") { if (ev.key === "Escape") ev.target.blur(); return; }
+  if (ev.target.tagName === "SELECT") ev.target.blur();   // the shortcuts still work after using the theme menu
+  if (/^[1-9]$/.test(ev.key)) ev.preventDefault();
   const keys = Object.keys(THEMES);
   if (/^[1-9]$/.test(ev.key) && keys[+ev.key - 1]) applyTheme(keys[+ev.key - 1], true);
   else if (ev.key === "Escape") { closeDrawer(); scene3d?.reset(); document.getElementById("ctx").style.display = "none"; }
@@ -840,9 +940,9 @@ fetch(`/state?token=${encodeURIComponent(TOKEN)}`).then(r => r.json()).then(stat
   document.getElementById("max").textContent = state.max_agents;
   const picker = document.getElementById("themes");
   for (const [key, label] of Object.entries(state.themes)) {
-    const b = document.createElement("button"); b.textContent = label; b.dataset.theme = key;
-    b.onclick = () => applyTheme(key, true); picker.appendChild(b);
+    const option = document.createElement("option"); option.value = key; option.textContent = label; picker.appendChild(option);
   }
+  picker.onchange = () => { applyTheme(picker.value, true); picker.blur(); };
   applyTheme(state.theme, false);
   for (const a of state.agents) agents[a.id] = { info: a, steps: [] };
   for (const e of state.events) handle(e);
