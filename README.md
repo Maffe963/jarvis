@@ -88,6 +88,10 @@ agent, and approvals have Yes/No buttons. The "All messages" topic shows everyth
 `/new Name | role | task` starts an agent from Telegram, even while Jarvis is off; `/team`, `/stop` and
 `/result` do what they say. Without a team bot, agents' questions and results go to your Jarvis bot chat.
 
+**Reviews:** when an agent writes files or runs commands, a Reviewer agent (started automatically, read-only)
+checks that work for safety, correctness and efficiency before the agent can hand it in, and sends back
+anything to fix; after 3 rounds the open concerns go in the agent's report.
+
 ## Starting with Windows
 
 ```bash
@@ -129,6 +133,13 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
   mode a full model ID (default `claude-sonnet-5-5`).
 - `JARVIS_EFFORT`: subscription mode only, `low` (default, fastest) up to `max`.
 - `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`: a more natural voice.
+
+## Reviewing changes to Jarvis
+
+`REVIEW.md` is the checklist for changes to this code (safety first, then correctness and efficiency).
+`.github/workflows/claude-review.yml` has Claude review every pull request against it once the PR is out of
+draft. It needs one repository secret: run `claude setup-token` and add the token as `CLAUDE_CODE_OAUTH_TOKEN`
+(Settings > Secrets and variables > Actions). Without it the review step is skipped.
 
 ## Layout
 
