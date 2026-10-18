@@ -7,6 +7,10 @@ Agents work until they finish or are stopped; messages that arrive while one is 
 is done. Agents, their conversations and waiting messages are saved in memory/team/agents.json, so they carry on
 after the service restarts. Every message goes in the team's message log (team/messages.py) and everything they do
 is reported as events (team/events.py) for the dashboard, the team's Telegram bot and Jarvis.
+
+Work that changes things (files written, project commands run) is checked before it's handed in: the agent can't
+finish until a Reviewer agent, started automatically when needed, has reviewed it for safety, correctness and
+efficiency and approved it (or it has had MAX_REVIEW_ROUNDS tries, in which case the open concerns go in its report).
 """
 import json
 import os
@@ -44,6 +48,27 @@ RESUMED = ("(The team service restarted while you were working, so your last ste
 ALONE_GRACE_S = 60  # a waiting agent whose teammates have all finished wraps up after this long
 USER_IDS = ("user", "jarvis", "the user")
 
+# ----- review -----
+CHANGING_TOOLS = ("write_file", "run_project_command")  # using any of these means the work gets reviewed
+MAX_REVIEW_ROUNDS = 3
+REVIEWER_NAME = "Reviewer"
+REVIEWER_ROLE = "Reviews teammates' code and files for safety, correctness and efficiency"
+REVIEWER_TOOLS = {"read_file", "list_files", "find_files", "get_project_output", "web_search", "list_folder_access"}
+REVIEWER_TASK = """Review the work your teammates send you. Each review request says what they did and which files
+they wrote or commands they ran. For each request:
+1. Read every file named with read_file (and get_project_output for commands they ran). Never approve unread work.
+2. SAFETY first. Look for: deleting or overwriting anything the task didn't need; shell or PowerShell commands that
+   could damage the PC, change system settings or run downloaded code; passwords, API keys or tokens written into
+   files or output; building commands, SQL, HTML or file paths from untrusted text (injection); sending personal
+   data anywhere; infinite loops or anything that could fill the disk.
+3. CORRECTNESS: does it do what the task asked? Real bugs, missed edge cases, wrong paths, code that can't run.
+4. EFFICIENCY: needless work, repeated or nested loops over big data, many calls where one would do, reading
+   whole huge files when a part would do, code much longer or more complicated than it needs to be.
+Ignore style and personal preference. Then call review_verdict once: approved=true only if there is no safety
+problem and no real bug. Otherwise list each problem as: file, what's wrong, the exact fix. Be brief and specific.
+You can't change files yourself. If a teammate disagrees, weigh their reason fairly. When nobody has sent you
+anything new, just end your turn and wait; finish only when asked, with a short summary of what you reviewed."""
+
 
 def _short(text: str, n: int = 160) -> str:
     text = " ".join(str(text).split())
@@ -63,14 +88,22 @@ class Agent:
         self.result = saved.get("result", "")
         self.history: list[dict] = list(saved.get("history", []))
         self.started = saved.get("started", time.time())
+        self.kind = saved.get("kind", "agent")  # or "reviewer"
+        # rounds asked for; how much of the log the last request covered, and how much an approval has cleared
+        self.review: dict = saved.get("review") or {"rounds": 0, "requested": 0, "cleared": 0, "notes": ""}
         self.session = None
 
     def info(self) -> dict:
         return {"id": self.id, "name": self.name, "role": self.role, "task": self.task, "status": self.status,
-                "steps": len(self.log), "result": self.result, "started": self.started}
+                "steps": len(self.log), "result": self.result, "started": self.started, "kind": self.kind}
 
     def saved(self) -> dict:
-        return {**self.info(), "inbox": list(self.inbox), "history": list(self.history), "log": list(self.log)[-200:]}
+        return {**self.info(), "inbox": list(self.inbox), "history": list(self.history), "log": list(self.log),
+                "review": dict(self.review)}
+
+    def unreviewed_changes(self) -> bool:
+        """Whether it wrote files or ran project commands since its work was last approved."""
+        return any(entry.split(":", 1)[0] in CHANGING_TOOLS for entry in list(self.log)[self.review["cleared"]:])
 
     def set_status(self, status: str, note: str = "") -> None:
         self.status = status
@@ -105,9 +138,43 @@ class Agent:
                     "Meanwhile don't repeat the question.")
 
         def finish(inputs: dict) -> str:
-            self.result = inputs.get("report", "").strip() or "(no report)"
+            report = inputs.get("report", "").strip() or "(no report)"
+            if self.kind == "agent" and self.unreviewed_changes():
+                if self.review["rounds"] < MAX_REVIEW_ROUNDS:
+                    return ("Not yet: you wrote files or ran commands, so your work must be reviewed first. Call "
+                            "request_review with the files and what you did, end your turn, and finish once the "
+                            "Reviewer approves (fix what it asks for and request another review if it doesn't).")
+                report += f"\n\nNote: the Reviewer still had concerns after {MAX_REVIEW_ROUNDS} rounds: " + \
+                    (self.review["notes"] or "(none given)")
+            self.result = report
             self.cancelled.set()  # stops after this step
             return "Finished. Your report has been handed to Jarvis."
+
+        def request_review(inputs: dict) -> str:
+            reviewer = ensure_reviewer()
+            if reviewer is None:
+                self.review["cleared"] = len(self.log)
+                return ("No Reviewer could be started (the team is full), so you may finish; say in your report that "
+                        "the work wasn't reviewed.")
+            self.review.update(rounds=self.review["rounds"] + 1, requested=len(self.log))
+            save()
+            files = inputs.get("files") or []
+            deliver(self.id, reviewer.id, f"Review request (round {self.review['rounds']} of {MAX_REVIEW_ROUNDS}) "
+                                          f"from {self.name}.\nWhat I did: {inputs.get('summary', '')}\n"
+                                          f"Files and commands: {', '.join(files) if files else '(none listed)'}")
+            return f"Sent to {reviewer.name}. End your turn now; its verdict will come to you as a message."
+
+        def review_verdict(inputs: dict) -> str:
+            author = find(inputs.get("author", ""))
+            if author is None or author is self or author.status in FINISHED:
+                return f"No active teammate called '{inputs.get('author', '')}'."
+            approved, notes = bool(inputs.get("approved")), inputs.get("notes", "").strip()
+            author.review["notes"] = notes
+            if approved:  # covers what it had done when it asked, not anything it changes afterwards
+                author.review["cleared"] = author.review["requested"]
+            save()
+            deliver(self.id, author.id, ("APPROVED. " if approved else "CHANGES NEEDED. ") + (notes or ""))
+            return f"Sent your verdict to {author.name}."
 
         def team_list(_: dict) -> str:
             return "\n".join(f"{a.name} ({a.role}) - {a.status}" for a in active() if a is not self) or "Just you."
@@ -127,7 +194,21 @@ class Agent:
                        finish),
             "team": ({"name": "team", "description": "Who else is on the team and what they're doing.",
                       "input_schema": {"type": "object", "properties": {}, "required": []}}, team_list),
-        }
+        } | ({
+            "review_verdict": ({"name": "review_verdict", "description": "Give a teammate your review: approved or "
+                                "not, with each problem and its fix.",
+                                "input_schema": {"type": "object", "properties": {
+                                    "author": text, "approved": {"type": "boolean"}, "notes": text},
+                                    "required": ["author", "approved", "notes"]}}, review_verdict),
+        } if self.kind == "reviewer" else {
+            "request_review": ({"name": "request_review", "description": "Ask the Reviewer to check files you "
+                                "wrote or commands you ran (needed before you can finish such work).",
+                                "input_schema": {"type": "object", "properties": {
+                                    "files": {"type": "array", "items": text,
+                                              "description": "Full paths of files written, and commands run"},
+                                    "summary": {"type": "string", "description": "What you did and why"}},
+                                    "required": ["files", "summary"]}}, request_review),
+        })
 
     # ----- running -----
 
@@ -157,7 +238,8 @@ class Agent:
 
         team = ", ".join(f"{a.name} ({a.role})" for a in active() if a is not self) or "none yet"
         prompt = PROMPT.format(name=self.name, role=self.role, team=team)
-        self.session = brain.ClaudeCodeSession(prompt, background.ALLOWED, self.cancelled, self.log, self._tools())
+        allowed = REVIEWER_TOOLS if self.kind == "reviewer" else background.ALLOWED
+        self.session = brain.ClaudeCodeSession(prompt, allowed, self.cancelled, self.log, self._tools())
         if not resumed or not self.history:
             message = f"Your task from the user (via Jarvis):\n{self.task}"
         elif self.status in ("starting", "working"):
@@ -228,6 +310,19 @@ def find(name_or_id: str) -> Agent | None:
     return next((a for a in agents if a.id == wanted), None) or \
         next((a for a in reversed(agents) if a.name.lower() == wanted), None) or \
         next((a for a in reversed(agents) if wanted and wanted in a.name.lower()), None)
+
+
+def ensure_reviewer() -> Agent | None:
+    """The team's Reviewer, started if there isn't one working. None if the team is full."""
+    reviewer = next((a for a in active() if a.kind == "reviewer"), None)
+    if reviewer is None:
+        taken = find(REVIEWER_NAME) and find(REVIEWER_NAME).status not in FINISHED  # e.g. one the user named so
+        result = create_agent(f"{REVIEWER_NAME} (team)" if taken else REVIEWER_NAME, REVIEWER_ROLE, REVIEWER_TASK,
+                              kind="reviewer")
+        reviewer = next((a for a in active() if a.kind == "reviewer"), None)
+        if reviewer is None:
+            print(f"[team] no reviewer: {result}")
+    return reviewer
 
 
 def deliver(sender: str, to: str, text: str, via: str = "") -> str:
@@ -302,12 +397,13 @@ def shutdown() -> None:
 
 # ---------- what Jarvis (and the Telegram bot) can do, through the team service ----------
 
-def create_agent(name: str, role: str, task: str) -> str:
-    if len(active()) >= MAX_AGENTS:
+def create_agent(name: str, role: str, task: str, kind: str = "agent") -> str:
+    """`kind` "reviewer" is the team's Reviewer, which Jarvis doesn't count towards MAX_AGENTS."""
+    if kind == "agent" and len([a for a in active() if a.kind == "agent"]) >= MAX_AGENTS:
         return f"There are already {MAX_AGENTS} agents working; stop one first."
     if find(name) and find(name).status not in FINISHED:
         return f"There's already an active agent called {name}; pick another name."
-    agent = Agent(name.strip() or "Agent", role.strip(), task.strip())
+    agent = Agent(name.strip() or "Agent", role.strip(), task.strip(), {"kind": kind})
     with _lock:
         _agents[agent.id] = agent
     events.emit("agent", agent=agent.id, name=agent.name, role=agent.role, task=agent.task)

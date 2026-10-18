@@ -237,7 +237,9 @@ TOOLS = [
                        "say in each task who to hand off to; they can message each other. Agents can research, "
                        "read/write files, check calendar/email/jobs, but not use the screen or message people. "
                        "They keep working even after Jarvis is turned off, and each gets its own Telegram topic "
-                       "the user can chat in. Give each a short name and complete standalone instructions.",
+                       "the user can chat in. Work that writes files or runs commands is automatically checked by "
+                       "a Reviewer agent (for safety, correctness and efficiency) before it's handed in, so don't "
+                       "create a reviewer yourself. Give each a short name and complete standalone instructions.",
         "input_schema": {"type": "object", "properties": {
             "name": {"type": "string", "description": "Short name, e.g. 'Researcher'"},
             "role": {"type": "string", "description": "One line: what this agent is responsible for"},
