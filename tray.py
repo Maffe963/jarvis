@@ -89,6 +89,15 @@ def _shutdown() -> None:
     os._exit(0)  # the voice loop and its threads can't be interrupted politely
 
 
+def _open_dashboard() -> None:
+    import webbrowser
+
+    from dashboard import server
+
+    if server.url():
+        webbrowser.open(server.url())
+
+
 def run(run_voice) -> None:
     global _icon
     if not claim_single_instance():
@@ -111,6 +120,7 @@ def run(run_voice) -> None:
 
     icon = pystray.Icon("jarvis", _icon_image(False), "Jarvis", pystray.Menu(
         pystray.MenuItem("Mute microphone", toggle_mute, checked=lambda item: mic.muted.is_set()),
+        pystray.MenuItem("Open dashboard", lambda icon, item: _open_dashboard()),
         pystray.MenuItem("Open log", lambda icon, item: os.startfile(LOG_FILE)),
         pystray.MenuItem("Turn Jarvis off", lambda icon, item: turn_off()),
     ))

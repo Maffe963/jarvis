@@ -20,3 +20,4 @@ memory/background_tasks.json
 memory/browser-profile/
 memory/models/
 memory/voice_print.json
+memory/dashboard_history.json

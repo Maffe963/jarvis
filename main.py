@@ -232,6 +232,13 @@ def start_phone():
     return telegram_bot.start(respond, load_history, cancel_task, tray.turn_off)
 
 
+def start_dashboard() -> None:
+    """The live agent dashboard (http://127.0.0.1:8765, opened with a secret link: say 'open the dashboard')."""
+    from dashboard import server
+
+    server.start(respond)
+
+
 def run_remote() -> None:
     """Phone control only: no microphone or speech, just the Telegram bot (and timers/reminders to the phone)."""
     warm_up()
@@ -240,6 +247,7 @@ def run_remote() -> None:
         print("Phone control isn't set up: add TELEGRAM_BOT_TOKEN to .env (see telegram_bot.py).")
         return
     set_announcer(lambda msg: (print(f"Jarvis: {msg}"), phone.notify(msg)))
+    start_dashboard()
     reminders.start()
     exit_when_asked()
     print("Jarvis online (phone only). Message your bot on Telegram. Ctrl+C to quit.")
@@ -379,6 +387,7 @@ def run_voice() -> None:
         return approved
 
     phone = start_phone()
+    start_dashboard()
     set_announcer(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg), phone and phone.notify(msg)))
     history = load_history()
     microphone = select_microphone()

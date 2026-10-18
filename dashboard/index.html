@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis Command Center</title>
+<style>
+  :root {
+    --bg: #070b12; --panel: #0d1420; --panel-2: #111a29; --line: #1c2a3f; --text: #d8e6f5; --muted: #7b8ea8;
+    --cyan: #38d6ff; --amber: #ffb547; --red: #ff5c6c; --green: #4ee49a; --grey: #5b6577; --violet: #a98bff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+               font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; overflow: hidden; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line);
+           background: linear-gradient(180deg, #0b1220, var(--bg)); }
+  header h1 { margin: 0; font-size: 16px; letter-spacing: .18em; font-weight: 600; color: var(--cyan); }
+  .chips { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+  .chip { padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; }
+  .chip b { color: var(--text); font-weight: 600; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--grey); margin-right: 6px; }
+  .live .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  main { display: grid; grid-template-columns: 1fr 380px; min-height: 0; }
+  #map { position: relative; min-height: 0; overflow: hidden;
+         background: radial-gradient(circle at 50% 50%, #0e1a2c 0, var(--bg) 70%); }
+  #map svg { width: 100%; height: 100%; display: block; }
+  .empty { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); color: var(--muted);
+           text-align: center; max-width: 520px; font-size: 13px; }
+  aside { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  aside h2 { margin: 0; padding: 12px 16px 6px; font-size: 11px; letter-spacing: .14em; color: var(--muted); font-weight: 600; }
+  #approvals:empty { display: none; }
+  .approval { margin: 6px 12px; padding: 10px 12px; border: 1px solid var(--red); border-radius: 10px;
+              background: #2a0f16; animation: glow 1.6s ease-in-out infinite; }
+  .approval .who { color: var(--red); font-size: 12px; font-weight: 600; }
+  .approval .q { margin: 4px 0 8px; }
+  .approval button { margin-right: 6px; }
+  #feed { flex: 1; overflow-y: auto; padding: 4px 12px 12px; }
+  .item { padding: 7px 10px; margin: 4px 0; border-radius: 8px; background: var(--panel-2); border-left: 3px solid var(--line);
+          font-size: 13px; word-wrap: break-word; }
+  .item .meta { color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+  .item.msg { border-left-color: var(--violet); }
+  .item.act { border-left-color: var(--cyan); }
+  .item.res { border-left-color: var(--green); }
+  .item.you { border-left-color: var(--amber); }
+  .item.jar { border-left-color: var(--cyan); background: #0e2030; }
+  .item.warn { border-left-color: var(--red); }
+  .item .more { color: var(--cyan); font-size: 12px; text-decoration: none; }
+  footer { display: flex; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--panel); }
+  input[type=text] { flex: 1; background: #0a111c; border: 1px solid var(--line); border-radius: 10px; color: var(--text);
+                     padding: 10px 14px; font: inherit; outline: none; }
+  input[type=text]:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px #38d6ff22; }
+  button { background: #12324a; color: var(--text); border: 1px solid #1f4d6d; border-radius: 8px; padding: 7px 14px;
+           font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--cyan); }
+  button.danger { background: #3a1219; border-color: #6d1f2b; }
+  button.good { background: #103a28; border-color: #1f6d4b; }
+  #drawer { position: absolute; top: 14px; right: 14px; width: min(420px, calc(100% - 28px)); max-height: calc(100% - 28px);
+            overflow-y: auto; background: #0c1522ee; border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+            backdrop-filter: blur(6px); display: none; }
+  #drawer.open { display: block; }
+  #drawer h3 { margin: 0 0 2px; font-size: 18px; }
+  #drawer .role { color: var(--muted); margin-bottom: 10px; }
+  #drawer .section { margin-top: 12px; font-size: 11px; letter-spacing: .12em; color: var(--muted); }
+  #drawer pre { white-space: pre-wrap; background: #0a111c; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+                font: 13px/1.45 "Segoe UI", system-ui, sans-serif; max-height: 260px; overflow-y: auto; margin: 6px 0 0; }
+  #drawer .steps div { padding: 3px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+  #drawer .row { display: flex; gap: 8px; margin-top: 10px; }
+  .close { float: right; background: none; border: none; color: var(--muted); font-size: 20px; padding: 0 4px; }
+  .node { cursor: pointer; }
+  .node text { fill: var(--text); text-anchor: middle; pointer-events: none; }
+  .node .sub { fill: var(--muted); font-size: 11px; }
+  .pulse { animation: pulse 1.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  @keyframes pulse { 0%, 100% { opacity: .35; transform: scale(1); } 50% { opacity: .9; transform: scale(1.12); } }
+  @keyframes glow { 0%, 100% { box-shadow: 0 0 0 #ff5c6c00; } 50% { box-shadow: 0 0 14px #ff5c6c55; } }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } aside { border-left: none; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>J.A.R.V.I.S. &middot; COMMAND CENTER</h1>
+  <div class="chips">
+    <span class="chip" id="conn"><span class="dot"></span>connecting</span>
+    <span class="chip">agents <b id="count">0</b>/<b id="max">5</b></span>
+    <span class="chip">working <b id="working">0</b></span>
+    <span class="chip">needs you <b id="needs">0</b></span>
+  </div>
+</header>
+<main>
+  <section id="map">
+    <svg id="svg"></svg>
+    <div class="empty" id="empty">No agents yet. Tell Jarvis something like <i>"get a researcher and a writer to put together a
+      one-page guide to the best budget mechanical keyboards"</i> below, by voice, or from your phone.</div>
+    <div id="drawer"></div>
+  </section>
+  <aside>
+    <div id="approvals"></div>
+    <h2>ACTIVITY</h2>
+    <div id="feed"></div>
+  </aside>
+</main>
+<footer>
+  <input type="text" id="cmd" placeholder="Tell Jarvis what to do (works like talking to him)..." autocomplete="off">
+  <button id="send">Send</button>
+</footer>
+<script>
+const TOKEN = new URLSearchParams(location.search).get("token");
+const SVGNS = "http://www.w3.org/2000/svg";
+const svg = document.getElementById("svg");
+const agents = {};          // id -> {info, el, activity}
+let selected = null;
+const STATUS = { starting: "#38d6ff", working: "#38d6ff", waiting: "#ffb547", "needs you": "#ff5c6c",
+                 done: "#4ee49a", stopped: "#5b6577", failed: "#ff5c6c" };
+const VERBS = { web_search: "searching the web", read_file: "reading a file", list_files: "looking through files",
+  find_files: "finding files", write_file: "writing a file", get_weather: "checking the weather",
+  calendar_events: "checking the calendar", check_email: "reading email", read_discord: "reading Discord",
+  run_project_command: "running a project command", send_to_phone: "sending to your phone",
+  send_message: "messaging a teammate", ask_user: "asking you something", finish: "finishing up", remember: "noting something" };
+
+function api(path, body) {
+  return fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis-Token": TOKEN },
+                       body: JSON.stringify(body) }).then(r => r.json());
+}
+function el(tag, attrs = {}, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c])); }
+function clock(t) { return new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }); }
+function nameOf(id) {
+  if (id === "jarvis") return "Jarvis";
+  if (id === "user") return "You";
+  return agents[id]?.info.name || id;
+}
+
+// ---------- map ----------
+const layer = { edges: el("g", {}, svg), dots: el("g", {}, svg), nodes: el("g", {}, svg) };
+const center = { jarvis: null, user: null };
+function size() { const r = svg.getBoundingClientRect(); return { w: r.width || 800, h: r.height || 600 }; }
+function positions() {
+  const { w, h } = size();
+  const pos = { jarvis: { x: w / 2, y: h / 2 + 20 }, user: { x: w / 2, y: Math.max(60, h / 2 - Math.min(w, h) * 0.38) } };
+  const ids = Object.keys(agents);
+  // an oval around Jarvis that always leaves room for a node and its labels at the edges
+  const rx = Math.max(90, Math.min(w / 2 - 110, Math.min(w, h) * 0.42));
+  const ry = Math.max(90, Math.min(h / 2 - 90, Math.min(w, h) * 0.34));
+  ids.forEach((id, i) => {
+    // spread agents in an arc from Jarvis's right, round the bottom, to his left, keeping the top clear for "You"
+    // (angles in degrees, SVG y points down: 90 is straight below)
+    const deg = ids.length === 1 ? 90 : -20 + (220 * i) / (ids.length - 1);
+    const a = deg * Math.PI / 180;
+    pos[id] = { x: w / 2 + rx * Math.cos(a), y: h / 2 + 20 + ry * Math.sin(a) };
+  });
+  return pos;
+}
+function drawNode(id, label, sub, color, big) {
+  const g = el("g", { class: "node" }, layer.nodes);
+  const r = big ? 46 : 36;
+  el("circle", { r: r + 10, fill: color, opacity: .12, class: "halo" }, g);
+  el("circle", { r: r, fill: "#0b1626", stroke: color, "stroke-width": big ? 3 : 2.5 }, g);
+  el("circle", { r: r - 7, fill: "none", stroke: color, "stroke-opacity": .35, "stroke-dasharray": "3 5" }, g);
+  const t = el("text", { y: big ? 5 : 4, "font-size": big ? 15 : 13, "font-weight": 600 }, g); t.textContent = label;
+  const s = el("text", { y: r + 22, class: "sub" }, g); s.textContent = sub || "";
+  const s2 = el("text", { y: r + 37, class: "sub" }, g);
+  g.addEventListener("click", () => { if (agents[id]) openDrawer(id); });
+  return { g, ring: g.children[1], halo: g.children[0], sub: s, sub2: s2 };
+}
+function render() {
+  layer.edges.innerHTML = ""; layer.nodes.innerHTML = "";
+  const pos = positions();
+  const line = (a, b, color, dash) => el("line", { x1: pos[a].x, y1: pos[a].y, x2: pos[b].x, y2: pos[b].y,
+    stroke: color, "stroke-opacity": .35, "stroke-width": 1.5, "stroke-dasharray": dash || "" }, layer.edges);
+  line("user", "jarvis", "#ffb547", "4 6");
+  for (const id of Object.keys(agents)) line("jarvis", id, STATUS[agents[id].info.status] || "#38d6ff");
+  const u = drawNode("user", "You", "", "#ffb547", false); u.g.setAttribute("transform", `translate(${pos.user.x},${pos.user.y})`);
+  const j = drawNode("jarvis", "JARVIS", "", "#38d6ff", true); j.g.setAttribute("transform", `translate(${pos.jarvis.x},${pos.jarvis.y})`);
+  j.halo.classList.add("pulse");
+  for (const [id, a] of Object.entries(agents)) {
+    const color = STATUS[a.info.status] || "#38d6ff";
+    const n = drawNode(id, a.info.name, a.info.status, color, false);
+    n.g.setAttribute("transform", `translate(${pos[id].x},${pos[id].y})`);
+    const doing = a.activity || "";
+    n.sub2.textContent = doing.length > 26 ? doing.slice(0, 25) + "…" : doing;
+    if (["working", "starting", "needs you"].includes(a.info.status)) n.halo.classList.add("pulse");
+    a.el = n;
+  }
+  document.getElementById("empty").style.display = Object.keys(agents).length ? "none" : "block";
+  const list = Object.values(agents).map(a => a.info.status);
+  document.getElementById("count").textContent = list.filter(s => !["done", "stopped", "failed"].includes(s)).length;
+  document.getElementById("working").textContent = list.filter(s => s === "working" || s === "starting").length;
+  document.getElementById("needs").textContent = list.filter(s => s === "needs you").length + document.querySelectorAll(".approval").length;
+}
+function flyMessage(from, to, color) {
+  const pos = positions();
+  if (!pos[from] || !pos[to]) return;
+  const dot = el("circle", { r: 6, fill: color, opacity: .95 }, layer.dots);
+  const trail = el("circle", { r: 14, fill: color, opacity: .18 }, layer.dots);
+  const start = performance.now(), dur = 1100;
+  function step(now) {
+    const k = Math.min(1, (now - start) / dur), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    const x = pos[from].x + (pos[to].x - pos[from].x) * e, y = pos[from].y + (pos[to].y - pos[from].y) * e;
+    for (const c of [dot, trail]) { c.setAttribute("cx", x); c.setAttribute("cy", y); }
+    if (k < 1) requestAnimationFrame(step); else { dot.remove(); trail.remove(); }
+  }
+  requestAnimationFrame(step);
+}
+
+// ---------- feed & drawer ----------
+function feed(cls, meta, text, agentId) {
+  const box = document.getElementById("feed");
+  const d = document.createElement("div");
+  d.className = "item " + cls; d.dataset.agent = agentId || "";
+  const full = String(text ?? ""), long = full.length > 320;
+  d.innerHTML = `<div class="meta">${esc(meta)}</div><span class="txt">${esc(long ? full.slice(0, 300) + "…" : full)}</span>`
+              + (long ? ` <a href="#" class="more">show more</a>` : "");
+  if (long) d.querySelector(".more").onclick = ev => {
+    ev.preventDefault(); const open = ev.target.textContent === "show less";
+    d.querySelector(".txt").textContent = open ? full.slice(0, 300) + "…" : full;
+    ev.target.textContent = open ? "show more" : "show less";
+  };
+  box.appendChild(d);
+  while (box.children.length > 400) box.firstChild.remove();
+  if (selected && agentId && agentId !== selected) d.style.display = "none";
+  box.scrollTop = box.scrollHeight;
+}
+function openDrawer(id) {
+  // Built once per agent; refreshDrawer() then updates only the parts that change, so a half-typed message
+  // and the buttons stay put while the agent keeps working.
+  if (selected !== id || !document.getElementById("drawer").classList.contains("open")) {
+    selected = id;
+    const info = agents[id].info;
+    const drawer = document.getElementById("drawer");
+    drawer.innerHTML = `<button class="close" onclick="closeDrawer()">&times;</button>
+      <h3>${esc(info.name)}</h3><div class="role" id="d-role"></div>
+      <div class="section">TASK</div><pre>${esc(info.task)}</pre>
+      <div id="d-result"></div>
+      <div class="section">RECENT STEPS</div><div class="steps" id="d-steps"></div>
+      <div id="d-controls">
+        <div class="row"><input type="text" id="dm" placeholder="Message ${esc(info.name)}..."><button onclick="sendDM()">Send</button></div>
+        <div class="row"><button class="danger" onclick="stopAgent()">Stop ${esc(info.name)}</button></div>
+      </div>`;
+    drawer.classList.add("open");
+    document.getElementById("dm").addEventListener("keydown", e => { if (e.key === "Enter") sendDM(); });
+    for (const d of document.querySelectorAll("#feed .item")) d.style.display = (!d.dataset.agent || d.dataset.agent === id) ? "" : "none";
+  }
+  refreshDrawer();
+}
+function refreshDrawer() {
+  if (!selected || !agents[selected]) return;
+  const a = agents[selected], info = a.info;
+  document.getElementById("d-role").innerHTML = `${esc(info.role)} &middot; <span style="color:${STATUS[info.status]}">${esc(info.status)}</span>
+    &middot; ${(a.steps || []).length || info.steps || 0} steps`;
+  document.getElementById("d-result").innerHTML = info.result ? `<div class="section">RESULT</div><pre>${esc(info.result)}</pre>` : "";
+  document.getElementById("d-steps").innerHTML =
+    (a.steps || []).slice(-12).reverse().map(s => `<div>${esc(s)}</div>`).join("") || "<div>No steps yet.</div>";
+  document.getElementById("d-controls").style.display = ["done", "stopped", "failed"].includes(info.status) ? "none" : "";
+}
+function closeDrawer() {
+  selected = null; document.getElementById("drawer").classList.remove("open");
+  for (const d of document.querySelectorAll("#feed .item")) d.style.display = "";
+}
+function sendDM() {
+  const input = document.getElementById("dm"); const text = input.value.trim(); if (!text) return;
+  api("/message", { agent: selected, text });  // it shows up in the feed when Jarvis delivers it
+  input.value = "";
+}
+function stopAgent() { api("/stop", { agent: selected }); }
+function approvalCard(e) {
+  const box = document.getElementById("approvals");
+  const d = document.createElement("div"); d.className = "approval"; d.id = "ap-" + e.approval;
+  d.innerHTML = `<div class="who">${esc(e.who)} needs your OK</div><div class="q">${esc(e.question)}</div>
+    <button class="good">Yes</button><button class="danger">No</button>`;
+  d.children[2].onclick = () => api("/approve", { approval: e.approval, yes: true });
+  d.children[3].onclick = () => api("/approve", { approval: e.approval, yes: false });
+  box.appendChild(d); render();
+}
+
+// ---------- events ----------
+const seen = new Set();
+function handle(e) {
+  if (seen.has(e.id)) return; seen.add(e.id);
+  const t = clock(e.time);
+  switch (e.type) {
+    case "agent":
+      agents[e.agent] = agents[e.agent] || { info: { id: e.agent, name: e.name, role: e.role, task: e.task, status: "starting" }, steps: [] };
+      feed("act", `${t} · new agent`, `${e.name}: ${e.role}`, e.agent); render(); break;
+    case "status": {
+      const a = agents[e.agent]; if (!a) break;
+      a.info.status = e.status; if (e.note) a.activity = e.note;
+      if (["done", "failed", "needs you"].includes(e.status)) feed(e.status === "done" ? "res" : "warn", `${t} · ${a.info.name}`, `${e.status}${e.note ? ": " + e.note : ""}`, e.agent);
+      render(); if (selected === e.agent) refreshDrawer(); break;
+    }
+    case "activity": {
+      const a = agents[e.agent]; if (!a) break;
+      const verb = VERBS[e.tool] || e.tool.replace(/_/g, " ");
+      a.activity = verb; a.steps.push(`${verb}: ${e.result}`); a.info.steps = a.steps.length;
+      feed("act", `${t} · ${a.info.name} · ${verb}`, e.result, e.agent);
+      render(); if (selected === e.agent) refreshDrawer(); break;
+    }
+    case "message": {
+      const from = e.sender, to = e.to === "user" ? "user" : e.to;
+      flyMessage(agents[from] || from === "user" ? from : "jarvis", agents[to] ? to : (to === "user" ? "user" : "jarvis"),
+                 to === "user" ? "#ff5c6c" : "#a98bff");
+      const label = e.kind === "update" ? `${nameOf(from)} · update` : `${nameOf(from)} → ${nameOf(to)}`;
+      feed(to === "user" ? "warn" : "msg", `${t} · ${label}`, e.text, agents[from] ? from : (agents[to] ? to : ""));
+      break;
+    }
+    case "result": {
+      const a = agents[e.agent]; if (!a) break;
+      a.info.result = e.text; flyMessage(e.agent, "jarvis", "#4ee49a");
+      feed("res", `${t} · ${a.info.name} · result`, e.text.slice(0, 600) + (e.text.length > 600 ? "…" : ""), e.agent);
+      if (selected === e.agent) refreshDrawer(); break;
+    }
+    case "approval": approvalCard(e); feed("warn", `${t} · ${e.who} · needs your OK`, e.question); break;
+    case "approval_done": document.getElementById("ap-" + e.approval)?.remove(); render();
+      feed("you", `${t} · ${e.who}`, e.approved ? "approved" : "declined"); break;
+    case "jarvis":
+      if (e.direction === "in") { feed("you", `${t} · you → Jarvis`, e.text); flyMessage("user", "jarvis", "#ffb547"); }
+      else { feed("jar", `${t} · Jarvis`, e.text); flyMessage("jarvis", "user", "#38d6ff"); }
+      break;
+  }
+}
+
+function connect() {
+  const conn = document.getElementById("conn");
+  const source = new EventSource(`/events?token=${encodeURIComponent(TOKEN)}`);
+  source.onopen = () => { conn.className = "chip live"; conn.innerHTML = '<span class="dot"></span>live'; };
+  source.onmessage = m => handle(JSON.parse(m.data));
+  source.onerror = () => { conn.className = "chip"; conn.innerHTML = '<span class="dot"></span>reconnecting'; };
+}
+fetch(`/state?token=${encodeURIComponent(TOKEN)}`).then(r => r.json()).then(state => {
+  document.getElementById("max").textContent = state.max_agents;
+  for (const a of state.agents) agents[a.id] = { info: a, steps: [] };
+  for (const e of state.events) handle(e);
+  for (const a of state.agents) agents[a.id].info = a;
+  for (const p of state.approvals) if (!document.getElementById("ap-" + p.approval)) approvalCard(p);
+  render(); connect();
+});
+const cmd = document.getElementById("cmd");
+function sendCommand() { const text = cmd.value.trim(); if (!text) return; api("/command", { text }); cmd.value = ""; }
+document.getElementById("send").onclick = sendCommand;
+cmd.addEventListener("keydown", e => { if (e.key === "Enter") sendCommand(); });
+window.addEventListener("resize", render);
+</script>
+</body>
+</html>

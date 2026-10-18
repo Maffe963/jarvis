@@ -7,6 +7,7 @@ from tools.files import (grant_folder_access, list_files, list_folder_access, re
                          revoke_folder_access, write_file)
 from tools.search import web_search
 from tools.system import SYSTEM_TOOL_MAP, SYSTEM_TOOLS, needs_confirmation
+from team import agents as team_agents
 
 TOOLS = [
     {
@@ -97,7 +98,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + background.TOOLS + browser.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + background.TOOLS + browser.TOOLS + team_agents.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -126,6 +127,7 @@ TOOL_MAP = {
     **watchers.TOOL_MAP,
     **background.TOOL_MAP,
     **browser.TOOL_MAP,
+    **team_agents.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
@@ -185,6 +187,8 @@ def ack_phrase(name: str, inputs: dict) -> str:
                                     "previous": "going back"}.get(inputs.get("action"), "on it"),
         "calendar_events": lambda: "checking your calendar",
         "update_jarvis": lambda: "updating myself",
+        "create_agent": lambda: f"putting {inputs.get('name', 'an agent')} on it",
+        "open_dashboard": lambda: "opening the dashboard",
         "browser_open": lambda: "opening that in my browser",
         "browser_search": lambda: "searching for that",
         "start_background_task": lambda: "I'll work on that in the background",

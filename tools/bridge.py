@@ -14,11 +14,13 @@ from tools.registry import TOOLS, run_tool
 
 class ToolBridge:
     def __init__(self, allowed: set[str] | None = None, cancelled: threading.Event | None = None,
-                 log: list[str] | None = None) -> None:
-        """`allowed`: tool names this session may use (None = all). `cancelled` / `log`: see run_tool."""
+                 log: list[str] | None = None, extra: dict | None = None) -> None:
+        """`allowed`: tool names this session may use (None = all). `cancelled` / `log`: see run_tool.
+        `extra`: {name: (schema, handler(inputs) -> str)} tools only this session has (e.g. an agent's own)."""
         self.token = secrets.token_urlsafe(32)
         self.allowed, self.cancelled, self.log = allowed, cancelled, log
-        tools = [t for t in TOOLS if allowed is None or t["name"] in allowed]
+        extra = extra or {}
+        tools = [t for t in TOOLS if allowed is None or t["name"] in allowed] + [schema for schema, _ in extra.values()]
         self.confirm = None      # set by brain.py before each turn
         self.acknowledge = None  # likewise
         self._lock = threading.Lock()  # one tool (and one confirmation prompt) at a time
@@ -36,6 +38,13 @@ class ToolBridge:
                     self.send_error(404)
                     return
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                if body["name"] in extra:
+                    try:
+                        result = extra[body["name"]][1](body.get("input") or {})
+                    except Exception as e:
+                        result = f"Tool error: {e}"
+                    self._reply({"result": result})
+                    return
                 if bridge.allowed is not None and body["name"] not in bridge.allowed:
                     self._reply({"result": f"{body['name']} isn't available here."})
                     return

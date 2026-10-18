@@ -1,0 +1,154 @@
+"""The live agent dashboard: a page on this PC (http://127.0.0.1:8765) showing Jarvis and its agents.
+
+Every request must carry this run's secret token (it's in the link Jarvis opens), so other websites open in
+the browser can't send Jarvis commands through it. Only this PC can connect.
+"""
+import json
+import os
+import secrets
+import threading
+import time
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from team import agents, approvals, events
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PORT = int(os.environ.get("JARVIS_DASHBOARD_PORT", "8765"))
+TOKEN = secrets.token_urlsafe(24)
+HISTORY_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard_history.json")
+
+_server: ThreadingHTTPServer | None = None
+_respond = None  # main.respond, so the command box works like talking to Jarvis
+_history: list[dict] = []
+_busy = threading.Lock()
+
+
+def url() -> str | None:
+    return f"http://127.0.0.1:{PORT}/?token={TOKEN}" if _server else None
+
+
+def snapshot() -> dict:
+    return {"agents": [a.info() for a in agents.everyone()], "approvals": approvals.pending(),
+            "events": events.recent()[-400:], "max_agents": agents.MAX_AGENTS}
+
+
+def _command(text: str) -> None:
+    """Run a typed command through Jarvis, as if spoken, reporting the reply as an event."""
+    global _history
+    events.emit("jarvis", direction="in", text=text)
+    with _busy:
+        try:
+            _history, reply = _respond(_history, text, lambda q: approvals.ask(q, "Jarvis"),
+                                       lambda said: events.emit("jarvis", direction="out", text=said),
+                                       history_file=HISTORY_FILE)
+        except Exception as e:
+            reply = f"Something went wrong: {e}"
+    if reply:
+        events.emit("jarvis", direction="out", text=reply)
+    elif reply is None:
+        events.emit("jarvis", direction="out", text="Stopped.")
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _authorized(self) -> bool:
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        given = self.headers.get("X-Jarvis-Token") or query.get("token", [""])[0]
+        host_ok = self.headers.get("Host", "").split(":")[0] in ("127.0.0.1", "localhost")
+        return host_ok and secrets.compare_digest(given, TOKEN)
+
+    def _send(self, code: int, body: bytes, kind: str) -> None:
+        self.send_response(code)
+        self.send_header("Content-Type", kind)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, data, code: int = 200) -> None:
+        self._send(code, json.dumps(data).encode(), "application/json")
+
+    def do_GET(self):
+        if not self._authorized():
+            self._send(403, b"Open the dashboard from Jarvis (say 'open the dashboard').", "text/plain")
+            return
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/":
+            with open(os.path.join(HERE, "index.html"), "rb") as f:
+                self._send(200, f.read(), "text/html; charset=utf-8")
+        elif path == "/state":
+            self._json(snapshot())
+        elif path == "/events":
+            self._stream()
+        else:
+            self._send(404, b"", "text/plain")
+
+    def _stream(self) -> None:
+        """Server-sent events: the page gets each new event the moment it happens."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        listener = events.subscribe()
+        try:
+            while True:
+                try:
+                    event = listener.get(timeout=15)
+                    payload = f"data: {json.dumps(event)}\n\n"
+                except Exception:
+                    payload = ": keep-alive\n\n"
+                self.wfile.write(payload.encode())
+                self.wfile.flush()
+        except (ConnectionError, OSError):
+            pass
+        finally:
+            events.unsubscribe(listener)
+
+    def do_POST(self):
+        if not self._authorized():
+            self._send(403, b"", "text/plain")
+            return
+        length = min(int(self.headers.get("Content-Length", 0)), 100_000)
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except ValueError:
+            self._json({"error": "bad request"}, 400)
+            return
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/command" and body.get("text", "").strip():
+            if _respond is None:
+                self._json({"error": "commands aren't available in this mode"}, 400)
+                return
+            threading.Thread(target=_command, args=(body["text"].strip(),), daemon=True).start()
+            self._json({"ok": True})
+        elif path == "/message":
+            self._json({"result": agents.message_agent(body.get("agent", ""), body.get("text", ""))})
+        elif path == "/stop":
+            self._json({"result": agents.stop_agent(body.get("agent", ""))})
+        elif path == "/approve":
+            self._json({"ok": approvals.decide(body.get("approval", ""), bool(body.get("yes")))})
+        else:
+            self._json({"error": "unknown"}, 404)
+
+    def log_message(self, *args) -> None:
+        pass
+
+
+def start(respond=None) -> str | None:
+    """Start the dashboard (once). `respond` is main.respond, for the command box."""
+    global _server, _respond, _history
+    if _server is not None:
+        return url()
+    _respond = respond
+    try:
+        from memory.conversation import load_history
+
+        _history = load_history(HISTORY_FILE)
+        _server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as e:
+        print(f"[dashboard] couldn't start on port {PORT}: {e}")
+        return None
+    _server.daemon_threads = True
+    threading.Thread(target=_server.serve_forever, daemon=True, name="dashboard").start()
+    print(f"[dashboard] {url()}")
+    return url()

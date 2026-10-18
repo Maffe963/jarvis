@@ -157,7 +157,8 @@ class ClaudeCodeSession:
     """
 
     def __init__(self, system_prompt: str | None = None, allowed_tools: set[str] | None = None,
-                 cancelled: threading.Event | None = None, log: list[str] | None = None) -> None:
+                 cancelled: threading.Event | None = None, log: list[str] | None = None,
+                 extra_tools: dict | None = None) -> None:
         """Defaults: the main conversation. Background tasks pass their own prompt, tools and stop switch."""
         from tools.bridge import ToolBridge
 
@@ -167,7 +168,7 @@ class ClaudeCodeSession:
         claude = shutil.which("claude")
         if not claude:
             raise BackendError("I can't find Claude Code on this PC, sir. Please install it or switch to API mode.")
-        self.bridge = ToolBridge(allowed_tools, self.cancelled, log)
+        self.bridge = ToolBridge(allowed_tools, self.cancelled, log, extra_tools)
         config = {"mcpServers": {"jarvis": {
             "command": sys.executable,
             "args": [os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")],
