@@ -71,5 +71,10 @@ class ToolBridge:
         self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
 
+    def stop(self) -> None:
+        """Stop listening (when the session that used it is done for good)."""
+        self._server.shutdown()
+        self._server.server_close()
+
     def _authorized(self, handler: BaseHTTPRequestHandler) -> bool:
         return secrets.compare_digest(handler.headers.get("X-Jarvis-Token", ""), self.token)

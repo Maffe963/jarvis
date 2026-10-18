@@ -67,6 +67,52 @@ Names are looked up in `contacts.json` (copy `contacts.example.json`), or just t
 email as ...". Discord IDs come from right-clicking a user or channel with Developer Mode on (Discord
 Settings > Advanced).
 
+## Agent team
+
+Ask Jarvis to put agents on a bigger job ("get a researcher and a writer on a report about home batteries").
+Each agent is its own Claude conversation with a role; they message each other, ask you when they need a
+decision, and finish with a report. Say "open the dashboard" to watch them live.
+
+The team runs in its own process (`team_service.py`), which Jarvis starts when it isn't running and which
+keeps going after Jarvis turns off, so agents carry on working and talking to each other. Agents, their
+conversations and every message are saved in `memory/team/`, so they also pick up again after a restart.
+Jarvis can read every message the agents sent or received ("what has the team been saying?"), and when it
+comes back on it tells you what the team sent while it was away. To have the team start at sign-in even
+when Jarvis doesn't: `.venv/Scripts/python.exe startup.py install-team`.
+
+**Each agent's own Telegram chat:** create a second bot with @BotFather and put its token in
+`TEAM_TELEGRAM_BOT_TOKEN` (it also needs `TELEGRAM_ALLOWED_USER_ID`). Make a Telegram group, turn on Topics in
+its settings, add the bot as an admin that can manage topics, and send `/setup` in the group. Every new agent
+then gets its own topic with its task, messages, updates and result; whatever you write there goes to that
+agent, and approvals have Yes/No buttons. The "All messages" topic shows everything agents say to each other.
+`/new Name | role | task` starts an agent from Telegram, even while Jarvis is off; `/team`, `/stop` and
+`/result` do what they say. Without a team bot, agents' questions and results go to your Jarvis bot chat.
+
+**Coders:** for programming, Jarvis starts coder agents ("get two coders on adding dark mode to my site").
+List the repositories they may work on, and the checks they may run (tests, lint), in `code_repos.json` (copy
+`code_repos.example.json`), and put a GitHub token in `GITHUB_TOKEN` (fine-grained, with Contents and Pull
+requests read/write on those repositories). Each coder works in its own copy of the repository
+(`memory/team/worktrees/`) on its own `agents/...` branch, so several can work at once and your own checkout is
+never touched. They can only change files in that copy and only run the listed checks. When done they push and open
+a pull request; the Reviewer reads it, runs the checks, comments, and merges it into main once it's good (it only
+merges the team's own pull requests, never with failing checks or conflicts). Set `JARVIS_AGENT_MERGE=ask` to
+approve each merge from your phone first. From Telegram: `/code repo | task`.
+
+**Reviews:** when an agent writes files or runs commands, a Reviewer agent (started automatically, read-only)
+checks that work for safety, correctness and efficiency before the agent can hand it in, and sends back
+anything to fix; after 3 rounds the open concerns go in the agent's report.
+
+## The dashboard from your phone
+
+The dashboard only listens on the PC itself. To open it from your phone anywhere, put it on your own private
+network with [Tailscale](https://tailscale.com) (free): install it on the PC and your phone and sign in to both
+with the same account, then on the PC run `tailscale serve --bg 8765`. It shows an address like
+`https://my-pc.tail1234.ts.net`; put that in `.env` as `JARVIS_DASHBOARD_URL` and restart Jarvis. Send `/dashboard`
+to your Jarvis bot (or ask Jarvis to "send me the dashboard link") to get the link. Only your own devices on
+Tailscale can reach it, and the link carries a secret key that stays the same across restarts; keep it private,
+since the dashboard can give Jarvis commands. To change the key, delete `memory/dashboard_token` and restart. The
+dashboard runs while Jarvis is on; when Jarvis is off, use the team's Telegram topics.
+
 ## Starting with Windows
 
 ```bash
@@ -109,11 +155,21 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
 - `JARVIS_EFFORT`: subscription mode only, `low` (default, fastest) up to `max`.
 - `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`: a more natural voice.
 
+## Reviewing changes to Jarvis
+
+`REVIEW.md` is the checklist for changes to this code (safety first, then correctness and efficiency).
+`.github/workflows/claude-review.yml` has Claude review every pull request against it once the PR is out of
+draft. It needs one repository secret: run `claude setup-token` and add the token as `CLAUDE_CODE_OAUTH_TOKEN`
+(Settings > Secrets and variables > Actions). Without it the review step is skipped.
+
 ## Layout
 
 - `main.py`: voice and text loops, confirmations
 - `brain.py`: talks to Claude (API or Claude Code)
 - `mcp_server.py`, `tools/bridge.py`: let Claude Code call Jarvis's tools in subscription mode
 - `tools/`: everything Jarvis can do (`registry.py` lists them)
+- `team_service.py`, `team/`: the agent team, its message log and its Telegram topics; `team/client.py` is
+  Jarvis's side of it
+- `dashboard/`: the live agent dashboard
 - `voice/`: microphone, wake word, speech to text, text to speech
 - `memory/`: conversation history (`history.json`, not committed)

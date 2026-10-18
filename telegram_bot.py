@@ -5,7 +5,8 @@ is listened to; everyone else is ignored. Risky actions ask you with Yes/No butt
 bot sends what each action actually reported, plus a screenshot when something on screen changed, so you
 can check it was done right.
 
-Commands: /stop (stop the current task), /screenshot [left|right|main|all], /status, /off, /help
+Commands: /stop (stop the current task), /screenshot [left|right|main|all], /status, /dashboard,
+/restart [team|all], /off, /help
 """
 import io
 import json
@@ -38,16 +39,20 @@ HELP = ("Message me like you'd talk to Jarvis (text or a voice note), e.g. \"ope
         "or \"what are my top jobs?\".\n\n"
         "After each task I send what actually happened and, if the screen changed, a screenshot.\n\n"
         "/stop - stop what I'm doing\n/screenshot - see your screen (add left, right, main or all)\n"
-        "/status - CPU, memory and open apps\n/off - turn Jarvis off on the PC\n/help - this message")
+        "/status - CPU, memory and open apps\n/dashboard - a link to the agent dashboard\n"
+        "/restart - restart Jarvis (/restart team: the agent team, /restart all: both)\n"
+        "/off - turn Jarvis off on the PC\n/help - this message")
 
 
 # Shown by Telegram when you type "/" or tap the Menu button.
 COMMANDS = [
     ("on", "Turn Jarvis on (when it's off)"),
     ("off", "Turn Jarvis off on the PC"),
+    ("restart", "Restart Jarvis (add team or all)"),
     ("stop", "Stop what Jarvis is doing"),
     ("screenshot", "See your screen (add left, right, main or all)"),
     ("status", "CPU, memory and open apps"),
+    ("dashboard", "Link to the agent dashboard"),
     ("help", "What Jarvis can do"),
 ]
 
@@ -225,13 +230,42 @@ class PhoneJarvis:
 
             apps = sorted({system._app_label(w) for w in system._app_windows()})
             self.send(f"{system.system_info()}\nOpen apps: {', '.join(apps) or 'none'}")
+        elif command == "/dashboard":
+            from dashboard import server
+
+            link = server.public_url()
+            self.send(f"🖥 Your agent dashboard: {link}\n\nKeep this link private: it controls Jarvis." if link else
+                      "The dashboard only opens on the PC right now. To open it from your phone, install Tailscale on "
+                      "the PC and your phone, run `tailscale serve --bg 8765` on the PC, and put the https address it "
+                      "shows in .env as JARVIS_DASHBOARD_URL. Then restart Jarvis and send /dashboard again.")
         elif command == "/on":
             self.send("Jarvis is already on. 👍")
+        elif command == "/restart":
+            # In the background: restarting the team can take a while and shouldn't hold up reading messages.
+            threading.Thread(target=self._restart, args=(arg.strip().lower(),), daemon=True).start()
         elif command == "/off":
             # Not on this thread: it's the one that reads your Yes/No tap, so waiting for it here would never end.
             threading.Thread(target=self._off, daemon=True).start()
         else:
             self.send("I don't know that command. /help shows what I can do.")
+
+    def _restart(self, what: str) -> None:
+        """/restart: Jarvis; /restart team: the agent team service (agents carry on); /restart all: both."""
+        if what in ("team", "agents", "all", "both", "everything"):
+            from team import client
+
+            self.send("🔄 Restarting the agent team...")
+            self.send("✅ The agent team is back; unfinished agents carry on." if client.restart_service()
+                      else "⚠️ The agent team didn't come back. Check memory/team/service.log on the PC.")
+            if what in ("team", "agents"):
+                return
+        if self.working.is_set():
+            self.cancel_task()  # a restart shouldn't wait for the task in progress
+        from tools import updater
+
+        os.environ["JARVIS_STARTED_FROM_PHONE"] = "1"  # the new Jarvis says when it's back
+        self.send("🔄 Restarting Jarvis. I'll message you when I'm back.")
+        updater._restart_after_reply()
 
     def _off(self) -> None:
         if self._ask("Turn Jarvis off on the PC?" + ("" if launcher_running() else " You won't be able to "

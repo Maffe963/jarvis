@@ -6,6 +6,8 @@
     .venv/Scripts/python.exe startup.py remove-shortcuts
     .venv/Scripts/python.exe startup.py install-launcher    # let you turn Jarvis on from Telegram (/on)
     .venv/Scripts/python.exe startup.py uninstall-launcher
+    .venv/Scripts/python.exe startup.py install-team        # run the agent team from sign-in, even with Jarvis off
+    .venv/Scripts/python.exe startup.py uninstall-team
 """
 import os
 import subprocess
@@ -93,9 +95,26 @@ def uninstall_launcher() -> None:
           else "The launcher wasn't set to start at sign-in.")
 
 
+TEAM_LINK = "Jarvis team.lnk"
+
+
+def install_team() -> None:
+    path = os.path.join(_folder("Startup"), TEAM_LINK)
+    _make_shortcut(path, "team_service.py", "Runs Jarvis's agent team and its Telegram chats; no microphone")
+    subprocess.Popen([PYTHONW, "team_service.py"], cwd=ROOT, creationflags=subprocess.DETACHED_PROCESS)
+    print(f"The agent team is running and will start when you sign in.\nShortcut: {path}")
+
+
+def uninstall_team() -> None:
+    removed = _remove(os.path.join(_folder("Startup"), TEAM_LINK))
+    print("The agent team will no longer start at sign-in (Jarvis still starts it when it runs)." if removed
+          else "The agent team wasn't set to start at sign-in.")
+
+
 if __name__ == "__main__":
     actions = {"install": install, "uninstall": uninstall, "shortcuts": shortcuts, "remove-shortcuts": remove_shortcuts,
-               "install-launcher": install_launcher, "uninstall-launcher": uninstall_launcher}
+               "install-launcher": install_launcher, "uninstall-launcher": uninstall_launcher,
+               "install-team": install_team, "uninstall-team": uninstall_team}
     action = actions.get(sys.argv[1] if len(sys.argv) > 1 else "")
     if action:
         action()

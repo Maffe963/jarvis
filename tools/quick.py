@@ -44,6 +44,10 @@ COMMANDS = [
     (r"(set )?(the )?volume( to)? (\d{1,3})( ?percent| ?%)?", lambda m: ("volume", {"action": "set", "level": int(m.group(4))})),
     (r"mute( the volume| the sound| it)?", lambda m: ("volume", {"action": "mute"})),
     (r"unmute( the volume| the sound| it)?", lambda m: ("volume", {"action": "unmute"})),
+    # "send me a screenshot (of my left screen) (to my phone)": straight to the phone, no questions.
+    (r"(send|text)( me)?( a)? (screenshot|screen shot|picture of my screens?)( of( my| the)? (?P<m>[a-z]+)"
+     r"( screens?| monitors?)?)?( to( my)? phone)?",
+     lambda m: ("send_screenshot", {"monitor": m.group("m") or ""})),
     (r"what time is it|what's the time|whats the time|what is the time", lambda m: _now("It's %I:%M %p, sir.")),
     (r"what('s| is) (the date|today's date)|what day is it( today)?|whats the date",
      lambda m: _now("It's %A, %B %d, sir.")),

@@ -1,7 +1,13 @@
 """The live agent dashboard: a page on this PC (http://127.0.0.1:8765) showing Jarvis and its agents.
 
-Every request must carry this run's secret token (it's in the link Jarvis opens), so other websites open in
-the browser can't send Jarvis commands through it. Only this PC can connect.
+The agents run in the team service (team_service.py); the page shows them through team/client.py, merged with
+Jarvis's own events (the command box, theme changes).
+
+Every request must carry the dashboard's secret token (it's in the link Jarvis opens), so other websites open in
+the browser can't send Jarvis commands through it. It only listens on this PC; to open it from your phone when
+you're out, put it on your private Tailscale network (`tailscale serve --bg 8765`) and set JARVIS_DASHBOARD_URL to
+the address Tailscale gives you. The token then stays the same across restarts (memory/dashboard_token, delete it
+to make a new one) so the link keeps working; Telegram's /dashboard sends it to your phone.
 """
 import json
 import os
@@ -11,12 +17,35 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from team import agents, approvals, events
+from team import approvals, client, events
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("JARVIS_DASHBOARD_PORT", "8765"))
-TOKEN = secrets.token_urlsafe(24)
+TOKEN_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard_token")
 HISTORY_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard_history.json")
+PUBLIC_URL = os.environ.get("JARVIS_DASHBOARD_URL", "").strip().rstrip("/")  # e.g. https://my-pc.tail1234.ts.net
+
+
+def _token() -> str:
+    """A new secret each run, unless the dashboard is reachable from elsewhere: then one that lasts, so the link
+    on your phone keeps working."""
+    if not PUBLIC_URL:
+        return secrets.token_urlsafe(24)
+    try:
+        with open(TOKEN_FILE, "r", encoding="utf-8") as f:
+            saved = f.read().strip()
+        if len(saved) >= 32:
+            return saved
+    except FileNotFoundError:
+        pass
+    token = secrets.token_urlsafe(32)
+    with open(TOKEN_FILE, "w", encoding="utf-8") as f:
+        f.write(token)
+    return token
+
+
+TOKEN = _token()
+HOSTS = {"127.0.0.1", "localhost"} | ({urllib.parse.urlparse(PUBLIC_URL).hostname} if PUBLIC_URL else set())
 
 _server: ThreadingHTTPServer | None = None
 _respond = None  # main.respond, so the command box works like talking to Jarvis
@@ -66,10 +95,17 @@ def url() -> str | None:
     return f"http://127.0.0.1:{PORT}/?token={TOKEN}" if _server else None
 
 
+def public_url() -> str | None:
+    """The link that works from your phone, if the dashboard is set up for that."""
+    return f"{PUBLIC_URL}/?token={TOKEN}" if _server and PUBLIC_URL else None
+
+
 def snapshot() -> dict:
-    return {"agents": [a.info() for a in agents.everyone()], "approvals": approvals.pending(),
-            "events": [e for e in events.recent() if e["type"] != "theme"][-400:], "max_agents": agents.MAX_AGENTS,
-            "theme": theme(), "themes": THEMES}
+    team = client.state() or {"agents": [], "approvals": [], "events": [], "max_agents": client.MAX_AGENTS}
+    mine = [e for e in events.recent() if e["type"] != "theme"]
+    return {"agents": team["agents"], "approvals": approvals.pending() + team["approvals"],
+            "events": sorted(mine + team["events"], key=lambda e: e["time"])[-400:],
+            "max_agents": team["max_agents"], "theme": theme(), "themes": THEMES}
 
 
 def _command(text: str) -> None:
@@ -93,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
     def _authorized(self) -> bool:
         query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         given = self.headers.get("X-Jarvis-Token") or query.get("token", [""])[0]
-        host_ok = self.headers.get("Host", "").split(":")[0] in ("127.0.0.1", "localhost")
+        host_ok = self.headers.get("Host", "").split(":")[0].lower() in HOSTS
         return host_ok and secrets.compare_digest(given, TOKEN)
 
     def _send(self, code: int, body: bytes, kind: str) -> None:
@@ -164,13 +200,13 @@ class Handler(BaseHTTPRequestHandler):
             threading.Thread(target=_command, args=(body["text"].strip(),), daemon=True).start()
             self._json({"ok": True})
         elif path == "/message":
-            self._json({"result": agents.message_agent(body.get("agent", ""), body.get("text", ""))})
+            self._json({"result": client.message_agent(body.get("agent", ""), body.get("text", ""), "dashboard")})
         elif path == "/stop":
-            self._json({"result": agents.stop_agent(body.get("agent", ""))})
+            self._json({"result": client.stop_agent(body.get("agent", ""))})
         elif path == "/theme":
             self._json({"result": set_theme(body.get("theme", ""))})
         elif path == "/approve":
-            self._json({"ok": approvals.decide(body.get("approval", ""), bool(body.get("yes")))})
+            self._json({"ok": client.answer_approval(body.get("approval", ""), bool(body.get("yes")))})
         else:
             self._json({"error": "unknown"}, 404)
 

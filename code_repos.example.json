@@ -1,0 +1,11 @@
+{
+  "jarvis": {
+    "folder": "C:\\Users\\you\\code\\jarvis",
+    "base": "main",
+    "checks": {
+      "tests": ["python", "-m", "pytest", "-q"],
+      "lint": ["python", "-m", "pyflakes", "."]
+    },
+    "timeout": 600
+  }
+}
