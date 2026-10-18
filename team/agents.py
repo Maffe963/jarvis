@@ -309,8 +309,10 @@ TOOLS = [
     },
     {
         "name": "set_dashboard_theme",
-        "description": "Change the agent dashboard's look: 'command' (Command Center, default), 'village' (a "
-                       "cartoon village-builder island) or 'hud' (Stark-style holographic HUD).",
+        "description": "Change the agent dashboard's look: 'command' (Command Center, a tactical war table, default), "
+                       "'village' (a cartoon village-builder island), 'hud' (Stark-style holographic HUD), "
+                       "'synthwave' (80s neon drive), 'galaxy' (Deep Space: a star, planets and a station) or "
+                       "'matrix' (Mainframe: digital rain and server monoliths).",
         "input_schema": {"type": "object", "properties": {"theme": text}, "required": ["theme"]}
     },
     {

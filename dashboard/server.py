@@ -26,7 +26,14 @@ _busy = threading.Lock()
 
 SETTINGS_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard.json")
 STATIC = {"/scene3d.js": "text/javascript; charset=utf-8"}  # other files the page loads (fixed list, nothing else)
-THEMES = {"command": "Command Center", "village": "Village", "hud": "Stark HUD"}
+THEMES = {"command": "Command Center", "village": "Village", "hud": "Stark HUD", "synthwave": "Synthwave",
+          "galaxy": "Deep Space", "matrix": "Mainframe"}
+NICKNAMES = {"village": ("clash", "clash of clans", "coc", "town", "castle"),
+             "hud": ("iron man", "stark", "jarvis", "hologram"),
+             "command": ("default", "normal", "original", "classic", "war room", "tactical", "war table"),
+             "synthwave": ("synth", "neon", "retro", "outrun", "80s", "eighties", "vaporwave", "retrowave"),
+             "galaxy": ("space", "galaxy", "planets", "cosmos", "solar system", "stars", "universe"),
+             "matrix": ("matrix", "hacker", "code", "terminal", "cyber", "digital rain")}
 
 
 def theme() -> str:
@@ -43,9 +50,7 @@ def set_theme(name: str) -> str:
     filler = {"mode", "theme", "style", "look", "the", "dashboard", "skin", "view"}  # "village mode" -> "village"
     wanted = " ".join(w for w in name.lower().split() if w not in filler).strip() or name.lower().strip()
     key = next((k for k, label in THEMES.items() if wanted in (k, label.lower()) or wanted in label.lower()
-                or (wanted in ("clash", "clash of clans", "coc", "town", "castle") and k == "village")
-                or (wanted in ("iron man", "stark", "jarvis", "hologram") and k == "hud")
-                or (wanted in ("default", "normal", "original", "classic") and k == "command")), None)
+                or wanted in NICKNAMES.get(k, ())), None)
     if key is None:
         return f"No dashboard theme like '{name}'. Themes: {', '.join(THEMES.values())}."
     with open(SETTINGS_FILE, "w", encoding="utf-8") as f:

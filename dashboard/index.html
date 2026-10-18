@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jarvis Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barlow+Condensed:wght@500;700&family=Black+Ops+One&family=Exo+2:wght@500;700&family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
@@ -115,22 +115,25 @@
   body.wide #approvals { position: fixed; left: 14px; bottom: 74px; width: min(380px, calc(100% - 28px)); z-index: 15; }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } aside { border-left: none; border-top: var(--border); } }
 
-  /* ---------- theme: Command Center (default) ---------- */
+  /* ---------- theme: Command Center (default): a tactical war room, amber on gunmetal ---------- */
   body.command {
-    --font: "Segoe UI", system-ui, sans-serif; --bg: #070b12; --text: #d8e6f5; --muted: #7b8ea8; --accent: #38d6ff; --accent-text: #04121c;
-    --good: #4ee49a; --bad: #ff5c6c; --you: #ffb547; --msg: #a98bff; --line: #1c2a3f;
-    --title-font: 600 16px var(--font); --title-spacing: .18em; --title-shadow: none; --section-font: 600 11px var(--font);
-    --border: 1px solid #1c2a3f; --header-bg: linear-gradient(180deg, #0b1220, #070b12); --chip-border: 1px solid #1c2a3f;
-    --chip-radius: 999px; --chip-bg: transparent; --map-bg: radial-gradient(circle at 50% 50%, #0e1a2c 0, #070b12 70%);
-    --empty-text: #7b8ea8; --empty-bg: transparent; --panel: #0d1420; --radius: 10px; --radius-lg: 14px;
-    --approval-border: 1px solid #ff5c6c; --approval-bg: #2a0f16; --item-radius: 8px; --item-bg: #111a29; --item-text: #d8e6f5;
-    --item-meta: #7b8ea8; --item-shadow: none; --item-jarvis-bg: #0e2030; --footer-bg: #0d1420; --input-bg: #0a111c;
-    --input-border: 1px solid #1c2a3f; --input-text: #d8e6f5; --focus: #38d6ff22; --placeholder: #5d6f88;
-    --btn-bg: #12324a; --btn-text: #d8e6f5; --btn-border: 1px solid #1f4d6d; --btn-shadow: none; --btn-danger: #3a1219; --btn-good: #103a28;
-    --drawer-bg: #0c1522ee; --drawer-border: 1px solid #1c2a3f; --drawer-text: #d8e6f5; --drawer-muted: #7b8ea8;
-    --drawer-shadow: none; --drawer-title-font: 600 18px var(--font); --pre-bg: #0a111c; --pre-border: 1px solid #1c2a3f;
-    --step-line: #1c2a3f; --node-label: #d8e6f5; --node-sub: #7b8ea8; --node-font: 600 13px var(--font);
+    --font: "Barlow Condensed", "Segoe UI", sans-serif; --bg: #0b0e12; --text: #e8e2d4; --muted: #8d8a80; --accent: #ffa630; --accent-text: #1a1000;
+    --good: #7ed957; --bad: #ff4d4d; --you: #ffd166; --msg: #ffe2a8; --line: #2a3038;
+    --title-font: 22px "Black Ops One", var(--font); --title-spacing: .08em; --title-shadow: 0 2px 0 #000; --section-font: 700 13px var(--font);
+    --border: 1px solid #2a3038; --header-bg: linear-gradient(180deg, #1a1f26, #0f1318); --chip-border: 1px solid #3a414b;
+    --chip-radius: 3px; --chip-bg: #12161b; --map-bg: radial-gradient(circle at 50% 55%, #1c232c 0, #0b0e12 70%);
+    --empty-text: #c9bfa8; --empty-bg: #12161bcc; --panel: #11151a; --radius: 4px; --radius-lg: 6px;
+    --approval-border: 1px solid #ff4d4d; --approval-bg: #2a1212; --item-radius: 3px; --item-bg: #171c22; --item-text: #e8e2d4;
+    --item-meta: #8d8a80; --item-shadow: inset 0 -1px 0 #2a3038; --item-jarvis-bg: #241c10; --footer-bg: #11151a; --input-bg: #0d1014;
+    --input-border: 1px solid #3a414b; --input-text: #e8e2d4; --focus: #ffa63033; --placeholder: #6c6a63;
+    --btn-bg: #ffa630; --btn-text: #1a1000; --btn-border: 1px solid #ffa630; --btn-shadow: none; --btn-danger: #8a1f1f; --btn-good: #3f7a24;
+    --drawer-bg: #12161bf2; --drawer-border: 1px solid #ffa63088; --drawer-text: #e8e2d4; --drawer-muted: #8d8a80;
+    --drawer-shadow: 0 10px 30px #000a; --drawer-title-font: 22px "Black Ops One", var(--font); --pre-bg: #0d1014; --pre-border: 1px solid #2a3038;
+    --step-line: #2a3038; --node-label: #fff3dc; --node-sub: #c9bfa8; --node-font: 700 15px var(--font);
   }
+  body.command header { border-bottom: 4px solid; border-image: repeating-linear-gradient(-45deg, #ffa630 0 10px, #11151a 10px 20px) 4; }
+  body.command button.danger, body.command button.good { color: #fff; border-color: transparent; }
+  body.command .lbl3d .name { text-transform: uppercase; letter-spacing: .06em; border-left: 3px solid #ffa630; border-radius: 2px; }
 
   /* ---------- theme: Village (cartoon village builder) ---------- */
   body.village {
@@ -177,6 +180,67 @@
   body.hud::after { content: ""; position: fixed; inset: 0; pointer-events: none;
                     background: repeating-linear-gradient(0deg, #ffffff05 0 1px, transparent 1px 3px); }
   body.hud button.danger { color: #ff3d55; border-color: #ff3d55; }
+  /* ---------- theme: Synthwave (80s neon drive) ---------- */
+  body.synthwave {
+    --font: "Exo 2", "Segoe UI", sans-serif; --bg: #0b0221; --text: #f5e9ff; --muted: #b48ad8; --accent: #ff2bd6; --accent-text: #1a0026;
+    --good: #05ffa1; --bad: #ff2a6d; --you: #ffb000; --msg: #ff2bd6; --line: #3a1460;
+    --title-font: 22px "Audiowide", var(--font); --title-spacing: .08em; --title-shadow: 0 0 10px #ff2bd6, 0 0 24px #ff2bd699;
+    --section-font: 12px "Audiowide", var(--font);
+    --border: 1px solid #3a1460; --header-bg: linear-gradient(90deg, #1a0433, #0b0221 50%, #1a0433); --chip-border: 1px solid #ff2bd655;
+    --chip-radius: 4px; --chip-bg: #14032a; --map-bg: linear-gradient(180deg, #0b0221 0, #2a0845 60%, #ff2bd633 100%);
+    --empty-text: #f5e9ff; --empty-bg: #14032acc; --panel: #10022a; --radius: 6px; --radius-lg: 10px;
+    --approval-border: 1px solid #ff2a6d; --approval-bg: #2a0420; --item-radius: 4px; --item-bg: #170536; --item-text: #f5e9ff;
+    --item-meta: #b48ad8; --item-shadow: 0 0 0 1px #ff2bd622; --item-jarvis-bg: #1d0a45; --footer-bg: #10022a;
+    --input-bg: #0b0221; --input-border: 1px solid #ff2bd666; --input-text: #f5e9ff; --focus: #ff2bd644; --placeholder: #8a62b0;
+    --btn-bg: linear-gradient(90deg, #ff2bd6, #7b2bff); --btn-text: #fff; --btn-border: none; --btn-shadow: 0 0 14px #ff2bd666;
+    --btn-danger: #ff2a6d; --btn-good: #05b37a; --drawer-bg: #12032cee; --drawer-border: 1px solid #ff2bd688; --drawer-text: #f5e9ff;
+    --drawer-muted: #b48ad8; --drawer-shadow: 0 0 30px #ff2bd633; --drawer-title-font: 20px "Audiowide", var(--font);
+    --pre-bg: #0b0221; --pre-border: 1px solid #3a1460; --step-line: #3a1460; --node-label: #fff; --node-sub: #e3c4ff;
+    --node-font: 14px "Audiowide", var(--font);
+  }
+  body.synthwave header { border-bottom: 2px solid #ff2bd6; box-shadow: 0 0 18px #ff2bd666; }
+  body.synthwave .lbl3d .name { text-shadow: 0 0 8px #ff2bd6, 0 0 2px #000; }
+
+  /* ---------- theme: Deep Space ---------- */
+  body.galaxy {
+    --font: "Exo 2", "Segoe UI", sans-serif; --bg: #02010a; --text: #e6e9ff; --muted: #8b90c8; --accent: #9d8cff; --accent-text: #0a0620;
+    --good: #8affc1; --bad: #ff5577; --you: #ffd36b; --msg: #c9a0ff; --line: #1e1b44;
+    --title-font: 600 18px var(--font); --title-spacing: .3em; --title-shadow: 0 0 14px #9d8cffaa; --section-font: 600 11px var(--font);
+    --border: 1px solid #1e1b44; --header-bg: linear-gradient(90deg, #0a0620, #02010a, #0a0620); --chip-border: 1px solid #2c2766;
+    --chip-radius: 999px; --chip-bg: #08061a; --map-bg: radial-gradient(ellipse at 50% 55%, #1a1040 0, #02010a 70%);
+    --empty-text: #c9ccff; --empty-bg: #08061acc; --panel: #05041a; --radius: 12px; --radius-lg: 18px;
+    --approval-border: 1px solid #ff5577; --approval-bg: #1f0818; --item-radius: 10px; --item-bg: #0b0a26; --item-text: #e6e9ff;
+    --item-meta: #8b90c8; --item-shadow: none; --item-jarvis-bg: #15103a; --footer-bg: #05041a; --input-bg: #03020f;
+    --input-border: 1px solid #2c2766; --input-text: #e6e9ff; --focus: #9d8cff33; --placeholder: #5d5f94;
+    --btn-bg: #1f1a55; --btn-text: #e6e9ff; --btn-border: 1px solid #4a40aa; --btn-shadow: 0 0 12px #9d8cff33; --btn-danger: #3a0d22;
+    --btn-good: #0d3a2a; --drawer-bg: #07051cee; --drawer-border: 1px solid #4a40aa; --drawer-text: #e6e9ff; --drawer-muted: #8b90c8;
+    --drawer-shadow: 0 0 40px #9d8cff22; --drawer-title-font: 600 20px var(--font); --pre-bg: #03020f; --pre-border: 1px solid #1e1b44;
+    --step-line: #1e1b44; --node-label: #fff; --node-sub: #c9ccff; --node-font: 600 14px var(--font);
+  }
+
+  /* ---------- theme: Mainframe (digital rain) ---------- */
+  body.matrix {
+    --font: "Share Tech Mono", Consolas, monospace; --bg: #000800; --text: #b8ffcc; --muted: #3fa85f; --accent: #00ff66; --accent-text: #001a08;
+    --good: #66ffcc; --bad: #ff3355; --you: #d4ff00; --msg: #b6ffcc; --line: #0b3318;
+    --title-font: 20px var(--font); --title-spacing: .15em; --title-shadow: 0 0 8px #00ff66; --section-font: 12px var(--font);
+    --border: 1px solid #0b3318; --header-bg: #000d04; --chip-border: 1px solid #0f4d22; --chip-radius: 0; --chip-bg: #000d04;
+    --map-bg: radial-gradient(circle at 50% 50%, #002a10 0, #000800 70%); --empty-text: #3fa85f; --empty-bg: #000800cc;
+    --panel: #000d04; --radius: 0; --radius-lg: 0; --approval-border: 1px solid #ff3355; --approval-bg: #1a0008; --item-radius: 0;
+    --item-bg: #001306; --item-text: #b8ffcc; --item-meta: #3fa85f; --item-shadow: none; --item-jarvis-bg: #002410; --footer-bg: #000d04;
+    --input-bg: #000800; --input-border: 1px solid #0f4d22; --input-text: #00ff66; --focus: #00ff6633; --placeholder: #1f6b38;
+    --btn-bg: #002a10; --btn-text: #00ff66; --btn-border: 1px solid #00ff66; --btn-shadow: 0 0 10px #00ff6633; --btn-danger: #2a0008;
+    --btn-good: #003a18; --drawer-bg: #000d04ee; --drawer-border: 1px solid #00ff6688; --drawer-text: #b8ffcc; --drawer-muted: #3fa85f;
+    --drawer-shadow: 0 0 30px #00ff6622; --drawer-title-font: 20px var(--font); --pre-bg: #000800; --pre-border: 1px solid #0b3318;
+    --step-line: #0b3318; --node-label: #b8ffcc; --node-sub: #3fa85f; --node-font: 15px var(--font);
+  }
+  body.matrix #title::after { content: "\2588"; margin-left: 4px; animation: blink 1s steps(1) infinite; }
+  body.matrix button.danger { color: #ff3355; border-color: #ff3355; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* what's being said, riding along a message beam */
+  .msg3d { pointer-events: none; width: max-content; max-width: 240px; white-space: normal; text-align: center; font: 12px/1.35 var(--font);
+           padding: 4px 9px; border-radius: 8px; color: #fff; background: #000c; border: 1px solid var(--c); box-shadow: 0 0 14px var(--c); }
+  body.village .msg3d { background: #fff4d6; color: #4a2c0a; border: 2px solid #7d4a1b; box-shadow: 0 3px 0 #7d4a1b; font-weight: 800; }
   body.hud .item { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
 </style>
 </head>
@@ -196,7 +260,7 @@
 <main>
   <section id="map">
     <div id="scene3d"></div>
-    <div id="hint">drag to orbit · scroll to zoom · click a unit · right-click for actions · 1/2/3 themes · F expand · space spin · esc reset</div>
+    <div id="hint">drag to orbit · scroll to zoom · click a unit · right-click for actions · 1-6 themes · F expand · space spin · esc reset</div>
     <svg id="svg"></svg>
     <div class="empty" id="empty"></div>
     <div id="drawer"></div>
@@ -252,28 +316,41 @@ const ROLE_ICONS = [[/research|find|search|scout/i, "🏹"], [/writ|draft|blurb|
                     [/code|build|dev|engineer/i, "🔨"], [/plan|strateg|lead|manag/i, "🗺️"], [/data|analy|number|stat/i, "📊"],
                     [/design|art|visual/i, "🎨"], [/email|mail|message|comm/i, "🕊️"]];
 const roleIcon = info => (ROLE_ICONS.find(([re]) => re.test(info.role + " " + info.name)) || [0, "⚔️"])[1];
-
-const THEMES = {
-  command: {
-    words: { title: "J.A.R.V.I.S. · COMMAND CENTER", jarvis: "JARVIS", user: "You", agents: "agents", working: "working",
-             needs: "needs you", feed: "ACTIVITY", send: "Send", placeholder: "Tell Jarvis what to do (works like talking to him)...",
-             empty: 'No agents yet. Tell Jarvis something like "get a researcher and a writer to put together a one-page guide to the best budget mechanical keyboards".',
-             approval: "needs your OK" },
-    status: { starting: "#38d6ff", working: "#38d6ff", waiting: "#ffb547", "needs you": "#ff5c6c", done: "#4ee49a", stopped: "#5b6577", failed: "#ff5c6c" },
-    statusWord: s => s,
+const hexPoints = r => Array.from({ length: 6 }, (_, i) => { const a = Math.PI / 3 * i + Math.PI / 6; return `${Math.cos(a) * r},${Math.sin(a) * r}`; }).join(" ");
+// the 2D look shared by the glowing themes: a shape outlined in the status colour with the name inside
+function neonTheme({ words, status, words2, fill, done, glow, shape }) {
+  return {
+    words, status, statusWord: s => words2[s] || s,
     node(g, kind, info, color) {
       const big = kind === "jarvis", r = big ? 46 : 36;
-      const halo = el("circle", { r: r + 10, fill: color, opacity: .12 }, g);
-      el("circle", { r, fill: "#0b1626", stroke: color, "stroke-width": big ? 3 : 2.5 }, g);
-      el("circle", { r: r - 7, fill: "none", stroke: color, "stroke-opacity": .35, "stroke-dasharray": "3 5" }, g);
-      txt(g, kind === "agent" ? info.name : kind === "jarvis" ? "JARVIS" : "You", { y: big ? 5 : 4, class: "label" });
+      const halo = shape(g, kind, r + 9, { fill: color, opacity: .13, stroke: "none" });
+      if (glow) shape(g, kind, r, { fill: "none", stroke: color, "stroke-width": 6, opacity: .5, filter: "url(#glow)" });
+      shape(g, kind, r, { fill, stroke: color, "stroke-width": big ? 3 : 2.5 });
+      const name = kind === "agent" ? info.name : kind === "jarvis" ? words.jarvis : words.user;
+      txt(g, name.length > 12 ? name.slice(0, 11) + "…" : name, { y: 5, class: "label" });
       if (kind === "jarvis" || ["working", "starting", "needs you"].includes(info?.status)) halo.classList.add("pulse");
       return r;
     },
-    edge: (color, toUser) => ({ stroke: color, "stroke-opacity": .35, "stroke-width": 1.5, "stroke-dasharray": toUser ? "4 6" : "" }),
-    particle(layer, color) { return [el("circle", { r: 14, fill: color, opacity: .18 }, layer), el("circle", { r: 6, fill: color }, layer)]; },
-    burst(layer, x, y) { const c = el("circle", { cx: x, cy: y, r: 10, fill: "none", stroke: "#4ee49a", "stroke-width": 3 }, layer); grow(c, 70); },
-  },
+    edge: (color, toUser) => ({ stroke: color, "stroke-opacity": .4, "stroke-width": 1.5, "stroke-dasharray": toUser ? "4 6" : "" }),
+    particle(layer, color) {
+      return [el("circle", { r: 12, fill: color, opacity: .22, filter: "url(#glow)" }, layer), el("circle", { r: 4.5, fill: "#fff" }, layer)];
+    },
+    burst(layer, x, y) { const c = el("circle", { cx: x, cy: y, r: 14, fill: "none", stroke: done, "stroke-width": 3 }, layer); grow(c, 80); },
+  };
+}
+
+const THEMES = {
+  command: neonTheme({
+    words: { title: "JARVIS · COMMAND CENTER", jarvis: "JARVIS", user: "You", agents: "squads", working: "deployed",
+             needs: "need orders", feed: "OPS LOG", send: "Send", placeholder: "Give Jarvis an order (works like talking to him)...",
+             empty: 'No squads deployed. Tell Jarvis something like "get a researcher and a writer to put together a one-page guide to the best budget mechanical keyboards".',
+             approval: "needs your OK" },
+    status: { starting: "#ffa630", working: "#ffa630", waiting: "#8fa6bf", "needs you": "#ff4d4d", done: "#7ed957", stopped: "#48505a", failed: "#ff4d4d" },
+    words2: { starting: "deploying", working: "on mission", waiting: "holding", "needs you": "needs orders", done: "mission complete",
+              stopped: "recalled", failed: "down" },
+    fill: "#171c22", done: "#7ed957",
+    shape: (g, kind, r, attrs) => el("polygon", { points: hexPoints(r), ...attrs }, g),
+  }),
 
   village: {
     words: { title: "JARVIS VILLAGE", jarvis: "Town Hall", user: "Your Tower", agents: "builders", working: "busy",
@@ -381,6 +458,50 @@ const THEMES = {
       }
     },
   },
+
+  synthwave: neonTheme({
+    words: { title: "JARVIS // NEON DRIVE", jarvis: "JARVIS", user: "PLAYER 1", agents: "riders", working: "cruising",
+             needs: "need you", feed: "RADIO LOG", send: "PUNCH IT", placeholder: "Tell Jarvis where to drive...",
+             empty: 'The highway is empty. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "needs your green light" },
+    status: { starting: "#00f0ff", working: "#00f0ff", waiting: "#ffb000", "needs you": "#ff2a6d", done: "#05ffa1", stopped: "#4a3a6a", failed: "#ff2a6d" },
+    words2: { starting: "revving up", working: "cruising", waiting: "parked", "needs you": "needs you", done: "finish line",
+              stopped: "pulled over", failed: "crashed" },
+    fill: "#14032a", done: "#05ffa1", glow: true,
+    shape: (g, kind, r, attrs) => kind === "agent" ? el("polygon", { points: `0,${-r} ${r * .95},${r * .7} ${-r * .95},${r * .7}`, ...attrs }, g)
+      : kind === "user" ? el("rect", { x: -r * .8, y: -r * .8, width: r * 1.6, height: r * 1.6, ...attrs }, g)
+      : el("polygon", { points: `0,${-r} ${r},0 0,${r} ${-r},0`, ...attrs }, g),
+  }),
+
+  galaxy: neonTheme({
+    words: { title: "JARVIS · DEEP SPACE", jarvis: "JARVIS", user: "Station", agents: "worlds", working: "in orbit",
+             needs: "hailing you", feed: "MISSION LOG", send: "Transmit", placeholder: "Transmit an order to Jarvis...",
+             empty: 'Empty space. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards" and new worlds will form.',
+             approval: "requests clearance" },
+    status: { starting: "#7fd7ff", working: "#7fd7ff", waiting: "#c9a0ff", "needs you": "#ff5577", done: "#8affc1", stopped: "#3a3d5a", failed: "#ff5577" },
+    words2: { starting: "forming", working: "in orbit", waiting: "drifting", "needs you": "hailing you", done: "mission complete",
+              stopped: "went dark", failed: "lost signal" },
+    fill: "#0b0a26", done: "#8affc1", glow: true,
+    shape: (g, kind, r, attrs) => {
+      if (kind === "jarvis") return el("circle", { r, ...attrs, fill: "#ffb347", stroke: "#ffd9a0" }, g);
+      const body = el("circle", { r: r * .8, ...attrs }, g);
+      if (kind === "agent") el("ellipse", { rx: r * 1.3, ry: r * .35, fill: "none", stroke: attrs.stroke, "stroke-width": 2, opacity: .7 }, g);
+      return body;
+    },
+  }),
+
+  matrix: neonTheme({
+    words: { title: "MAINFRAME://JARVIS", jarvis: "JARVIS.CORE", user: "you@local", agents: "processes", working: "running",
+             needs: "blocked", feed: "STDOUT", send: "EXEC", placeholder: '$ jarvis --do "..."',
+             empty: '0 processes. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "requests sudo" },
+    status: { starting: "#00ff66", working: "#00ff66", waiting: "#d4ff00", "needs you": "#ff3355", done: "#66ffcc", stopped: "#1f4a2a", failed: "#ff3355" },
+    words2: { starting: "spawning", working: "running", waiting: "idle", "needs you": "blocked: sudo", done: "exit 0",
+              stopped: "killed", failed: "segfault" },
+    fill: "#001306", done: "#66ffcc", glow: true,
+    shape: (g, kind, r, attrs) => kind === "agent" ? el("rect", { x: -r * .6, y: -r, width: r * 1.2, height: r * 2, ...attrs }, g)
+      : el("polygon", { points: `0,${-r} ${r},0 0,${r} ${-r},0`, ...attrs }, g),
+  }),
 };
 let T = THEMES.command, themeKey = "command";
 
@@ -417,7 +538,7 @@ function applyTheme(key, save) {
 // ---------- map ----------
 const defs = el("defs", {}, svg);
 defs.innerHTML = `<filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4"/></filter>`;
-const layer = { edges: el("g", {}, svg), dots: el("g", {}, svg), nodes: el("g", {}, svg), fx: el("g", {}, svg) };
+const layer = { edges: el("g", {}, svg), beams: el("g", {}, svg), dots: el("g", {}, svg), nodes: el("g", {}, svg), fx: el("g", {}, svg) };
 function size() { const r = svg.getBoundingClientRect(); return { w: r.width || 800, h: r.height || 600 }; }
 function positions() {
   const { w, h } = size();
@@ -515,7 +636,7 @@ document.addEventListener("click", ev => { if (!ev.target.closest("#ctx")) docum
 document.addEventListener("keydown", ev => {
   if (ev.target.tagName === "INPUT") { if (ev.key === "Escape") ev.target.blur(); return; }
   const keys = Object.keys(THEMES);
-  if (["1", "2", "3"].includes(ev.key) && keys[+ev.key - 1]) applyTheme(keys[+ev.key - 1], true);
+  if (/^[1-9]$/.test(ev.key) && keys[+ev.key - 1]) applyTheme(keys[+ev.key - 1], true);
   else if (ev.key === "Escape") { closeDrawer(); scene3d?.reset(); document.getElementById("ctx").style.display = "none"; }
   else if (ev.key === "f" || ev.key === "F") toggleWide();
   else if (ev.key === " ") { ev.preventDefault(); scene3d?.toggleRotate(); }
@@ -550,13 +671,14 @@ function render() {
   document.getElementById("working").textContent = list.filter(s => s === "working" || s === "starting").length;
   document.getElementById("needs").textContent = list.filter(s => s === "needs you").length + document.querySelectorAll(".approval").length;
 }
-function flyMessage(from, to, color, kind) {
-  if (scene3d && document.body.classList.contains("three")) { scene3d.message(from, to, kind); return; }
+function flyMessage(from, to, color, kind, text) {
+  if (scene3d && document.body.classList.contains("three")) { scene3d.message(from, to, kind, text); return; }
   const pos = positions();
   if (!pos[from] || !pos[to]) return;
   const parts = T.particle(layer.dots, color, kind);
   const start = performance.now(), dur = themeKey === "village" ? 1500 : 1100;
   const arc = themeKey === "village" ? 60 : 0;   // scrolls fly in a little arc
+  beam2D(pos[from], pos[to], arc, color, dur);
   (function step(now) {
     const k = Math.min(1, (now - start) / dur), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
     const x = pos[from].x + (pos[to].x - pos[from].x) * e, y = pos[from].y + (pos[to].y - pos[from].y) * e - arc * Math.sin(Math.PI * e);
@@ -566,6 +688,23 @@ function flyMessage(from, to, color, kind) {
     }
     if (k < 1) requestAnimationFrame(step);
     else { parts.forEach(p => p.remove()); if (kind === "result") T.burst(layer.fx, pos[to].x, pos[to].y); }
+  })(start);
+}
+
+// the line between the two lights up as the message travels it, stays lit a moment, then fades
+function beam2D(a, b, arc, color, dur) {
+  const d = `M${a.x} ${a.y} Q${(a.x + b.x) / 2} ${(a.y + b.y) / 2 - arc * 2} ${b.x} ${b.y}`;
+  const wide = el("path", { d, fill: "none", stroke: color, "stroke-width": 10, "stroke-linecap": "round", opacity: .35,
+                            filter: themeKey === "village" ? "" : "url(#glow)" }, layer.beams);
+  const core = el("path", { d, fill: "none", stroke: color, "stroke-width": themeKey === "village" ? 5 : 3, "stroke-linecap": "round" }, layer.beams);
+  const length = core.getTotalLength() || 1, start = performance.now();
+  for (const p of [wide, core]) p.setAttribute("stroke-dasharray", `${length} ${length}`);
+  (function step(now) {
+    const k = Math.min(1, (now - start) / dur), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    const fade = Math.max(0, Math.min(1, 1 - (now - start - dur - 1100) / 1600));
+    for (const p of [wide, core]) p.setAttribute("stroke-dashoffset", length * (1 - e));
+    wide.setAttribute("opacity", .35 * fade); core.setAttribute("opacity", fade);
+    fade > 0 ? requestAnimationFrame(step) : (wide.remove(), core.remove());
   })(start);
 }
 
@@ -668,14 +807,14 @@ function handle(e) {
     case "message": {
       const from = e.sender, to = e.to === "user" ? "user" : e.to;
       flyMessage(agents[from] || from === "user" ? from : "jarvis", agents[to] ? to : (to === "user" ? "user" : "jarvis"),
-                 to === "user" ? T.status["needs you"] : getComputedStyle(document.body).getPropertyValue("--msg").trim(), "msg");
+                 to === "user" ? T.status["needs you"] : getComputedStyle(document.body).getPropertyValue("--msg").trim(), "msg", e.text);
       const label = e.kind === "update" ? `${nameOf(from)} · update` : `${nameOf(from)} → ${nameOf(to)}`;
       feed(to === "user" ? "warn" : "msg", `${t} · ${label}`, e.text, agents[from] ? from : (agents[to] ? to : ""));
       break;
     }
     case "result": {
       const a = agents[e.agent]; if (!a) break;
-      a.info.result = e.text; flyMessage(e.agent, "jarvis", T.status.done, "result");
+      a.info.result = e.text; flyMessage(e.agent, "jarvis", T.status.done, "result", e.text);
       feed("res", `${t} · ${a.info.name} · result`, e.text, e.agent);
       if (selected === e.agent) refreshDrawer(); break;
     }
@@ -683,8 +822,8 @@ function handle(e) {
     case "approval_done": document.getElementById("ap-" + e.approval)?.remove(); render();
       feed("you", `${t} · ${e.who}`, e.approved ? "approved" : "declined"); break;
     case "jarvis":
-      if (e.direction === "in") { feed("you", `${t} · ${T.words.user} → ${T.words.jarvis}`, e.text); flyMessage("user", "jarvis", T.status.waiting, "user"); }
-      else { feed("jar", `${t} · ${T.words.jarvis}`, e.text); flyMessage("jarvis", "user", T.status.working, "msg"); }
+      if (e.direction === "in") { feed("you", `${t} · ${T.words.user} → ${T.words.jarvis}`, e.text); flyMessage("user", "jarvis", T.status.waiting, "user", e.text); }
+      else { feed("jar", `${t} · ${T.words.jarvis}`, e.text); flyMessage("jarvis", "user", T.status.working, "msg", e.text); }
       break;
     case "theme": if (e.theme !== themeKey) applyTheme(e.theme, false); break;
   }
