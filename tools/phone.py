@@ -42,15 +42,17 @@ def send_screenshot(monitor: str = "", caption: str = "") -> str:
 
     from tools import monitors
 
-    wanted = monitor.lower().replace(" screen", "").replace(" monitor", "").strip()
+    # "my left screen" -> "left"; "my screen" -> "" (all of them)
+    words = [w for w in monitor.lower().split() if w not in ("my", "the", "screen", "screens", "monitor", "monitors")]
+    wanted = " ".join(words)
     if wanted in ALL_SCREENS or len(monitors.monitors()) == 1:
         image, what = ImageGrab.grab(all_screens=True), "screens" if len(monitors.monitors()) > 1 else "screen"
     else:
-        target = monitors.find_monitor(monitor)
+        target = monitors.find_monitor(wanted)
         if not target:
             return f"Unknown monitor '{monitor}'. Monitors:\n{monitors.list_monitors()}"
         image = ImageGrab.grab(bbox=tuple(target["rect"]), all_screens=True)
-        what = f"{monitor.strip()} screen"
+        what = f"{wanted} screen"
     image = image.convert("RGB")
     image.thumbnail((MAX_PHOTO_SIDE, MAX_PHOTO_SIDE))
     buffer = io.BytesIO()

@@ -80,14 +80,9 @@ def ensure_running(wait_s: float = 20) -> bool:
         running, version = ping(), code_version()
         if running and running.get("version") == version:
             return True
-        if running:  # Jarvis was updated: restart the service on the new code (agents carry on afterwards)
-            try:
-                _request("/shutdown", {})
-            except (OSError, ValueError, ConnectionError):
-                pass
-            deadline = time.monotonic() + 30  # it closes each agent's Claude Code first
-            while time.monotonic() < deadline and (ping() or {}).get("pid") == running.get("pid"):
-                time.sleep(0.25)
+        if running and not _stop(running):  # Jarvis was updated: restart on the new code (agents carry on)
+            print("[team] the old team service didn't stop")
+            return False
         _launch()
         deadline = time.monotonic() + wait_s
         while time.monotonic() < deadline:
@@ -98,18 +93,26 @@ def ensure_running(wait_s: float = 20) -> bool:
         return False
 
 
+def _stop(running: dict) -> bool:
+    """Ask the running service to stop; True once it has (it closes each agent's Claude Code first)."""
+    try:
+        _request("/shutdown", {})
+    except (OSError, ValueError, ConnectionError):
+        pass
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if (ping() or {}).get("pid") != running.get("pid"):
+            return True
+        time.sleep(0.25)
+    return False
+
+
 def restart_service() -> bool:
-    """Stop the team service and start it again (agents carry on). True once it's back."""
+    """Stop the team service and start it again (agents carry on). True once a new one is running."""
     with _start_lock:
         running = ping()
-        if running:
-            try:
-                _request("/shutdown", {})
-            except (OSError, ValueError, ConnectionError):
-                pass
-            deadline = time.monotonic() + 30
-            while time.monotonic() < deadline and (ping() or {}).get("pid") == running.get("pid"):
-                time.sleep(0.25)
+        if running and not _stop(running):
+            return False
     return ensure_running()
 
 

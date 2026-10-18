@@ -141,15 +141,21 @@ def _github(method: str, path: str, body: dict | None = None, accept: str = "app
 
 
 def _checks_summary(slug: str, sha: str) -> tuple[str, bool, bool]:
-    """('3 passed, 1 failed: lint', any failed, any still running)."""
+    """('3 passed, 1 failed (failed: lint)', any failed, any still running or not started yet)."""
     runs = _github("GET", f"/repos/{slug}/commits/{sha}/check-runs?per_page=100").get("check_runs", [])
-    failed = [r["name"] for r in runs if r.get("conclusion") in ("failure", "timed_out", "cancelled",
-                                                                  "action_required")]
-    running = [r["name"] for r in runs if r.get("status") != "completed"]
-    passed = len(runs) - len(failed) - len(running)
-    if not runs:
-        return "no checks reported", False, False
-    text = f"{passed} passed, {len(failed)} failed, {len(running)} running"
+    statuses = _github("GET", f"/repos/{slug}/commits/{sha}/status").get("statuses", [])  # older-style CI
+    results = [(r["name"], "running" if r.get("status") != "completed" else
+                "failed" if r.get("conclusion") in ("failure", "timed_out", "cancelled", "action_required") else
+                "passed") for r in runs]
+    results += [(s["context"], {"pending": "running", "success": "passed"}.get(s["state"], "failed"))
+                for s in statuses]
+    if not results:
+        # Nothing reported yet. If the repository has GitHub Actions, CI just hasn't started: that's not a pass.
+        workflows = _github("GET", f"/repos/{slug}/actions/workflows").get("total_count", 0)
+        return ("CI hasn't started yet", False, True) if workflows else ("no checks set up", False, False)
+    failed = [name for name, state in results if state == "failed"]
+    running = [name for name, state in results if state == "running"]
+    text = f"{len(results) - len(failed) - len(running)} passed, {len(failed)} failed, {len(running)} running"
     return text + (f" (failed: {', '.join(failed)})" if failed else ""), bool(failed), bool(running)
 
 
@@ -203,7 +209,7 @@ def _inside(ws: dict, path: str) -> str | None:
     if os.path.normcase(full) != os.path.normcase(root) and not os.path.normcase(full).startswith(
             os.path.normcase(root) + os.sep):
         return None
-    if ".git" in os.path.relpath(full, root).replace("\\", "/").split("/"):
+    if ".git" in os.path.relpath(full, root).replace("\\", "/").lower().split("/"):  # any case: Windows ignores it
         return None
     return full
 
@@ -217,8 +223,10 @@ def _run_check(spec: dict, check: str, cwd: str) -> str:
     if argv and argv[0].lower().endswith((".cmd", ".bat")):
         argv = ["cmd", "/c"] + argv
     try:
+        # No bytecode cache: a quick same-size edit can otherwise be tested as the old code.
         proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              timeout=spec.get("timeout", 600), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                              timeout=spec.get("timeout", 600), env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except subprocess.TimeoutExpired:
         return f"{wanted}: stopped after {spec.get('timeout', 600)} seconds"
     except FileNotFoundError as e:
@@ -278,6 +286,8 @@ def coder_tools(ws: dict) -> dict:
 
     def delete_code(i: dict) -> str:
         full = path_or_error(i.get("path", ""))
+        if os.path.normcase(full) == os.path.normcase(os.path.realpath(ws["path"])):
+            return "You can't delete the whole workspace; name the files or folders to delete."
         if os.path.isdir(full):
             shutil.rmtree(full)
         elif os.path.isfile(full):
@@ -294,7 +304,11 @@ def coder_tools(ws: dict) -> dict:
 
     def git_diff(_: dict) -> str:
         _git(ws["path"], "add", "-A")  # so new files show too (commit adds everything anyway)
-        return _clip(_git(ws["path"], "diff", "--cached", f"origin/{ws['base']}")[1], MAX_DIFF_CHARS)
+        # From where the branch split off, so changes others made to the main branch since don't show up here.
+        code, start = _git(ws["path"], "merge-base", f"origin/{ws['base']}", "HEAD")
+        if code:
+            return f"Couldn't work out where your branch started: {start}"
+        return _clip(_git(ws["path"], "diff", "--cached", start.strip())[1], MAX_DIFF_CHARS)
 
     def commit(i: dict) -> str:
         _git(ws["path"], "add", "-A")
@@ -378,8 +392,14 @@ def _review_spec(repo: str) -> tuple[dict, str]:
     return spec, slug
 
 
+def _team_made(pr: dict, slug: str) -> bool:
+    """A pull request from one of the team's own branches in this repository (not a fork, not someone else's)."""
+    return pr["head"]["ref"].startswith(BRANCH_PREFIX) and (pr["head"].get("repo") or {}).get("full_name") == slug
+
+
 def reviewer_tools(ask_user) -> dict:
     """`ask_user(question) -> bool` asks the user before merging when JARVIS_AGENT_MERGE=ask."""
+    reviewed: dict[tuple[str, int], str] = {}  # the commit the Reviewer last looked at, per pull request
     def list_pull_requests(i: dict) -> str:
         _, slug = _review_spec(i.get("repo", ""))
         prs = _github("GET", f"/repos/{slug}/pulls?state=open&per_page=50")
@@ -391,6 +411,7 @@ def reviewer_tools(ask_user) -> dict:
         _, slug = _review_spec(i.get("repo", ""))
         number = int(i.get("number", 0))
         pr = _github("GET", f"/repos/{slug}/pulls/{number}")
+        reviewed[(slug, number)] = pr["head"]["sha"]
         checks, _, _ = _checks_summary(slug, pr["head"]["sha"])
         diff = _github("GET", f"/repos/{slug}/pulls/{number}", accept="application/vnd.github.diff")
         return (f"#{number} {pr['title']} [{pr['state']}{', merged' if pr.get('merged') else ''}]\n"
@@ -409,17 +430,22 @@ def reviewer_tools(ask_user) -> dict:
     def run_pr_check(i: dict) -> str:
         spec, slug = _review_spec(i.get("repo", ""))
         number = int(i.get("number", 0))
+        pr = _github("GET", f"/repos/{slug}/pulls/{number}")
+        if not _team_made(pr, slug):  # running checks runs the pull request's code on this PC
+            return f"#{number} wasn't made by the team, so I won't run its code on this PC."
         path = os.path.join(WORKTREES, f"review-{_slug(i.get('repo', ''))}-{number}")
-        code, out = _git(spec["folder"], "fetch", "origin", f"pull/{number}/head")
+        ref = f"refs/jarvis-review/{number}"  # a named ref every worktree sees (FETCH_HEAD is per worktree)
+        code, out = _git(spec["folder"], "fetch", "--force", "origin", f"pull/{number}/head:{ref}")
         if code:
             return f"Couldn't fetch pull request #{number}: {out}"
         if os.path.isdir(path):
-            _git(path, "checkout", "--detach", "--force", "FETCH_HEAD")
+            code, out = _git(path, "checkout", "--force", "--detach", ref)
         else:
             os.makedirs(WORKTREES, exist_ok=True)
-            code, out = _git(spec["folder"], "worktree", "add", "--detach", path, "FETCH_HEAD")
-            if code:
-                return f"Couldn't check out pull request #{number}: {out}"
+            code, out = _git(spec["folder"], "worktree", "add", "--detach", path, ref)
+        if code:
+            return f"Couldn't check out pull request #{number}: {out}"
+        _git(path, "clean", "-ffdx")  # nothing left over from checking an earlier version
         return _run_check(spec, i.get("check", ""), path)
 
     def comment_on_pull_request(i: dict) -> str:
@@ -434,8 +460,11 @@ def reviewer_tools(ask_user) -> dict:
         pr = _github("GET", f"/repos/{slug}/pulls/{number}")
         if pr["state"] != "open":
             return f"#{number} isn't open ({'merged' if pr.get('merged') else pr['state']})."
-        if not pr["head"]["ref"].startswith(BRANCH_PREFIX) or pr["head"]["repo"]["full_name"] != slug:
+        if not _team_made(pr, slug):
             return f"#{number} wasn't made by the team (not an {BRANCH_PREFIX} branch here), so it's for the user to merge."
+        if reviewed.get((slug, number)) != pr["head"]["sha"]:
+            return (f"#{number} has changed since you last viewed it (or you haven't yet): view_pull_request and "
+                    "review the latest code before merging.")
         if pr.get("mergeable") is False:
             return f"#{number} has merge conflicts; the coder should run update_from_base, fix them and push."
         summary, failed, running = _checks_summary(slug, pr["head"]["sha"])
@@ -446,8 +475,9 @@ def reviewer_tools(ask_user) -> dict:
         if os.environ.get("JARVIS_AGENT_MERGE", "auto").strip().lower() == "ask" and \
                 not ask_user(f"Merge pull request #{number} \"{pr['title']}\" into {pr['base']['ref']}?"):
             return "The user said not to merge it."
-        result = _github("PUT", f"/repos/{slug}/pulls/{number}/merge",
-                         {"merge_method": "squash", "commit_title": f"{pr['title']} (#{number})"})
+        result = _github("PUT", f"/repos/{slug}/pulls/{number}/merge",  # sha: fails if anything was pushed since
+                         {"merge_method": "squash", "commit_title": f"{pr['title']} (#{number})",
+                          "sha": pr["head"]["sha"]})
         try:
             _github("DELETE", f"/repos/{slug}/git/refs/heads/{pr['head']['ref']}")
         except RuntimeError:
