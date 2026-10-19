@@ -6,7 +6,8 @@ Telegram group, turn on Topics in its settings, add the bot and make it an admin
 
 Each new agent gets a topic showing its task, its messages to and from teammates, its step-by-step updates and its
 result; whatever you write there goes to that agent. Its approvals come with Yes/No buttons. The "All messages"
-topic shows everything the agents say to each other. Commands: /new, /team, /stop, /result, /help.
+topic shows everything the agents say to each other. Photos, videos and files sent in a topic are saved in
+Downloads\\From phone and handed to that agent. Commands: /new, /team, /stop, /result, /help.
 
 Without a team bot, agents' questions and results go to your Jarvis bot chat instead (send-only, so approvals
 are answered on the dashboard there).
@@ -20,7 +21,7 @@ import urllib.error
 import urllib.request
 
 from team import agents, approvals, events, messages
-from telegram_bot import MAX_MESSAGE, TelegramAPI, _env
+from telegram_bot import MAX_MESSAGE, TelegramAPI, _env, incoming_file, save_incoming
 
 STATE_FILE = os.path.join(messages.FOLDER, "telegram.json")  # the group, and which topic is whose
 HELP = ("This is your agent team. Each agent gets its own topic here: whatever you write in it goes to that "
@@ -30,7 +31,8 @@ HELP = ("This is your agent team. Each agent gets its own topic here: whatever y
         "/team - what each agent is doing\n"
         "/stop - in an agent's topic, stop it (or /stop name, /stop all)\n"
         "/result - in an agent's topic, its final result (or /result name)\n"
-        "/help - this message")
+        "/help - this message\n\n"
+        "Send a photo, screenshot, video or file in an agent's topic to give it to that agent.")
 COMMANDS = [("new", "Start an agent: Name | role | task"), ("code", "Start a coder: repo | task"), ("team", "What each agent is doing"),
             ("stop", "Stop this agent (or: /stop name, /stop all)"), ("result", "This agent's final result"),
             ("help", "How the team chat works")]
@@ -310,10 +312,18 @@ class TeamBot:
 
         thread = message.get("message_thread_id") if message.get("is_topic_message") else None
         here = self._agent_for(thread)
+        attached = incoming_file(message)
         if command:
             self._command(message, command, arg.strip(), here)
+        elif attached:
+            if here is None:
+                self._reply(message, "Send it in an agent's topic, and it goes to that agent.")
+            elif here.status in agents.FINISHED:
+                self._reply(message, f"{here.name} has finished. Start a new agent with /new.")
+            else:  # downloading can take a while: not on the thread that reads messages
+                threading.Thread(target=self._pass_file, args=(message, attached, here), daemon=True).start()
         elif not text:
-            self._reply(message, "I can only pass on text messages to agents.")
+            self._reply(message, "I can pass on text, photos, videos and files to agents.")
         elif here is None:
             self._reply(message, "Write in an agent's topic to talk to it, or start one with /new. /help for more.")
         elif here.status in agents.FINISHED:
@@ -323,6 +333,23 @@ class TeamBot:
             result = agents.deliver("user", here.id, text, via="telegram")
             if not result.startswith("Sent"):
                 self._reply(message, result)
+
+    def _pass_file(self, message: dict, attached: tuple[str, str, str], agent) -> None:
+        """Save a photo, video or file sent in an agent's topic, and give that agent its path (and the caption)."""
+        file_id, name, kind = attached
+        try:
+            path = save_incoming(self.api, file_id, name)
+        except RuntimeError as e:
+            self._reply(message, str(e))
+            return
+        caption = (message.get("caption") or "").strip()
+        what = {"photo": "a photo", "video": "a video"}.get(kind, "a file")
+        note = (f"[The user sent {what} on Telegram, saved at {path}. Use view_media to see it.]" if kind != "file"
+                else f"[The user sent a file on Telegram, saved at {path}. view_media shows images and videos; "
+                     "read_file reads text.]")
+        result = agents.deliver("user", agent.id, note + (f"\n{caption}" if caption else ""), via="telegram")
+        if not result.startswith("Sent"):
+            self._reply(message, result)
 
     def _command(self, message: dict, command: str, arg: str, here) -> None:
         if command in ("/start", "/help"):
