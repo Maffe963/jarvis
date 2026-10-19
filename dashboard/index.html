@@ -116,6 +116,55 @@
   body.wide aside { border: 0; overflow: visible; }
   body.wide aside h2, body.wide #feed { display: none; }
   body.wide #approvals { position: fixed; left: 14px; bottom: 74px; width: min(380px, calc(100% - 28px)); z-index: 15; }
+  /* the roster: every agent at a glance, top of the map */
+  #roster { position: absolute; top: 10px; left: 14px; right: 14px; display: flex; gap: 6px; z-index: 5; overflow-x: auto; padding: 2px 2px 8px;
+            scrollbar-width: none; mask-image: linear-gradient(90deg, #000 92%, transparent); }
+  #roster::-webkit-scrollbar { display: none; }
+  #roster .pill { flex: none; white-space: nowrap; display: flex; align-items: center; gap: 6px; padding: 4px 11px 4px 9px; margin: 0;
+                  border-radius: var(--chip-radius); background: var(--pill-bg, var(--empty-bg)); border: var(--chip-border);
+                  color: var(--pill-text, var(--text)); font: 600 12.5px var(--font); box-shadow: 0 3px 12px #0005;
+                  backdrop-filter: blur(8px); transition: transform .15s, box-shadow .15s; }
+  #roster .pill:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--accent), 0 6px 16px #0007; }
+  #roster .pill:active { transform: translateY(0); }
+  #roster .pill .dot { width: 9px; height: 9px; margin: 0; background: var(--c); box-shadow: 0 0 8px var(--c); }
+  #roster .pill.busy .dot { animation: pulse 1.4s ease-in-out infinite; }
+  #roster .pill .st { color: var(--c); font-weight: 800; font-size: 11.5px; }
+  #roster .pill.needs { box-shadow: 0 0 0 1px var(--bad), 0 0 16px var(--bad); animation: glow 1.6s ease-in-out infinite; }
+  #roster .pill.sel { box-shadow: 0 0 0 2px var(--accent), 0 6px 16px #0007; }
+  #roster .pill.gone { opacity: .55; }
+  #roster .divider { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--muted); opacity: .5; }
+  .star { color: #ffd84a; margin-right: 3px; text-shadow: 0 0 6px #ffd84a99; font-family: "Segoe UI Symbol", sans-serif; }
+  /* the key: what each colour and word means */
+  #legend { position: absolute; left: 14px; bottom: 46px; z-index: 5; background: var(--pill-bg, var(--empty-bg)); border: var(--chip-border);
+            border-radius: var(--radius); padding: 8px 12px; font-size: 12px; color: var(--pill-text, var(--text)); backdrop-filter: blur(8px);
+            box-shadow: 0 3px 12px #0005; min-width: 210px; }
+  #legend h4 { margin: 0; font: var(--section-font); letter-spacing: .12em; color: var(--muted); cursor: pointer; display: flex;
+               justify-content: space-between; gap: 14px; user-select: none; }
+  #legend .rows { margin-top: 6px; }
+  #legend.closed .rows { display: none; }
+  #legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  #legend .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  #legend b { color: var(--c); } #legend i { color: var(--muted); font-style: normal; }
+  /* feed filters */
+  #tabs { display: flex; gap: 4px; padding: 0 12px 6px; flex-wrap: wrap; }
+  #tabs button { padding: 3px 10px; font: 600 12px var(--font); background: var(--chip-bg); color: var(--muted); border: var(--chip-border);
+                 box-shadow: none; border-radius: var(--chip-radius); }
+  #tabs button.on { background: var(--accent); color: var(--accent-text); }
+  #tabs button .n { opacity: .7; margin-left: 4px; font-size: 11px; }
+  .item .dup { margin-left: 6px; padding: 0 6px; border-radius: 8px; background: var(--accent); color: var(--accent-text); font-size: 10.5px; font-weight: 800; }
+  .item .who-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--c); box-shadow: 0 0 5px var(--c); }
+  .item { animation: slidein .25s ease-out; } @keyframes slidein { from { opacity: 0; transform: translateX(10px); } }
+  #drawer.open { animation: pop .2s ease-out; } @keyframes pop { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+  @media (max-width: 900px) { #legend { bottom: 12px; } #hint { display: none; } }
+  @media (max-width: 600px) {   /* phones: a compact header, short labels, more room for the map */
+    header { padding: 8px 12px; gap: 8px; } header h1 { font-size: 15px; letter-spacing: .06em; }
+    .chips { gap: 5px; } .chip { font-size: 11px; padding: 2px 8px; }
+    .chip:has(#working) { display: none; }
+    .lbl3d .doing { display: none; } .lbl3d .name { font-size: 12px; } .lbl3d .state { font-size: 10.5px; }
+    .lbl3d .bubble { width: 22px; height: 22px; line-height: 19px; font-size: 12px; border-width: 1.5px; }
+    #legend { font-size: 11px; min-width: 0; padding: 6px 10px; } #roster .pill { font-size: 11.5px; padding: 3px 9px 3px 7px; }
+    main { grid-template-rows: 62% 38%; } footer { padding: 8px 12px; }
+  }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } aside { border-left: none; border-top: var(--border); } }
 
   /* ---------- theme: Command Center (default): a tactical war room, amber on gunmetal ---------- */
@@ -160,6 +209,11 @@
   body.village .label, body.village .sub { paint-order: stroke; stroke: #3b2208; stroke-width: 3px; stroke-linejoin: round; }
   body.village button.danger { border-color: #8f1f15; box-shadow: 0 4px 0 #8f1f15; }
   body.village .themes button:not(.on) { color: #f3dfb0; box-shadow: none; border: none; }
+  body.village { --pill-bg: #f6e6bfee; --pill-text: #4a2c0a; }
+  body.village #roster .pill { border: 3px solid #7d4a1b; box-shadow: 0 3px 0 #7d4a1b; font-weight: 800; }
+  body.village #legend { border: 3px solid #7d4a1b; } body.village #legend h4, body.village #legend i { color: #8a5a2b; }
+  body.village #legend b, body.village #roster .pill .st { color: #4a2c0a; }
+  body.village #roster .pill .dot, body.village #legend .sw { border: 2px solid #4a2c0a; }
 
   /* ---------- theme: Stark HUD ---------- */
   body.hud {
@@ -296,10 +350,17 @@
   body.aurora button.danger, body.aurora button.good { color: #fff; }
 
   /* what's being said, riding along a message beam */
-  .msg3d { pointer-events: none; width: max-content; max-width: 240px; white-space: normal; text-align: center; font: 12px/1.35 var(--font);
+  .msg3d { pointer-events: none; width: max-content; max-width: 200px; white-space: normal; text-align: center; font: 12px/1.35 var(--font);
            padding: 4px 9px; border-radius: 8px; color: #fff; background: #000c; border: 1px solid var(--c); box-shadow: 0 0 14px var(--c); }
   body.village .msg3d { background: #fff4d6; color: #4a2c0a; border: 2px solid #7d4a1b; box-shadow: 0 3px 0 #7d4a1b; font-weight: 800; }
   body.hud .item { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
+  body.hud #roster .pill, body.hud #legend { clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px)); }
+  body.hud #roster .pill { text-transform: uppercase; letter-spacing: .08em; font-size: 11.5px; }
+  body.command #roster .pill { border-left: 3px solid var(--c); text-transform: uppercase; letter-spacing: .05em; }
+  body.matrix #roster .pill::before { content: "["; color: var(--muted); } body.matrix #roster .pill::after { content: "]"; color: var(--muted); }
+  body.synthwave #roster .pill { box-shadow: 0 0 0 1px #ff2bd655, 0 0 14px #ff2bd633; }
+  body.galaxy #roster .pill, body.aurora #roster .pill, body.abyss #roster .pill { border-radius: 999px; }
+  body.forge #roster .pill { font-family: "Cinzel", serif; font-weight: 800; }
 </style>
 </head>
 <body class="command">
@@ -310,6 +371,7 @@
     <span class="chip"><span id="agents-word">agents</span> <b id="count">0</b>/<b id="max">5</b></span>
     <span class="chip"><span id="working-word">working</span> <b id="working">0</b></span>
     <span class="chip"><span id="needs-word">needs you</span> <b id="needs">0</b></span>
+    <span class="chip" title="Standing specialists: always on, not counted in the limit"><span class="star">★</span><b id="standing">0</b> always on</span>
     <label class="themes" title="Theme (keys 1-9)"><select id="themes"></select></label>
     <div class="themes"><button id="dim" title="Switch between the 3D and 2D view">3D</button>
       <button id="wide" title="Expand the map to fill the window (F); double-click for full screen">Expand</button></div>
@@ -318,7 +380,9 @@
 <main>
   <section id="map">
     <div id="scene3d"></div>
-    <div id="hint">drag to orbit · scroll to zoom · click a unit · right-click for actions · 1-6 themes · F expand · space spin · esc reset</div>
+    <div id="roster"></div>
+    <div id="legend"></div>
+    <div id="hint">drag to orbit · scroll to zoom · click an agent · right-click for actions · 1-9 themes · L key · F expand · space spin · esc reset</div>
     <svg id="svg"></svg>
     <div class="empty" id="empty"></div>
     <div id="drawer"></div>
@@ -326,6 +390,7 @@
   <aside>
     <div id="approvals"></div>
     <h2 id="feed-title">ACTIVITY</h2>
+    <div id="tabs"></div>
     <div id="feed"></div>
   </aside>
 </main>
@@ -373,6 +438,12 @@ function spin(parent, seconds, reverse) {
   el("animateTransform", { attributeName: "transform", type: "rotate", from: reverse ? "360" : "0", to: reverse ? "0" : "360",
                            dur: seconds + "s", repeatCount: "indefinite" }, parent);
 }
+
+// What each status means, in plain words (themes have their own names for them)
+const PLAIN = { starting: "starting up", working: "working", waiting: "waiting for a message", "needs you": "needs your answer",
+                done: "finished", stopped: "stopped", failed: "ran into a problem" };
+const ORDER = ["needs you", "working", "starting", "waiting", "done", "failed", "stopped"];
+const isStanding = a => a?.info?.kind === "standing";
 
 // ---------- themes ----------
 // Each theme sets the words, the status colours, how nodes are drawn, and what flies along a message.
@@ -634,6 +705,7 @@ function applyTheme(key, save) {
   document.getElementById("empty").textContent = w.empty;
   document.getElementById("themes").value = key;
   for (const card of document.querySelectorAll(".approval .who")) card.textContent = `${card.dataset.who} ${w.approval}`;
+  renderLegend(); renderTabs();
   if (save) api("/theme", { theme: key });
   scene3d?.setTheme(key, agents);
   render(); refreshDrawer();
@@ -647,22 +719,68 @@ function size() { const r = svg.getBoundingClientRect(); return { w: r.width || 
 function positions() {
   const { w, h } = size();
   const pos = { jarvis: { x: w / 2, y: h / 2 + 20 }, user: { x: w / 2, y: Math.max(80, h / 2 - Math.min(w, h) * 0.38) } };
-  const ids = Object.keys(agents);
   const rx = Math.max(90, Math.min(w / 2 - 110, Math.min(w, h) * 0.42));
   const ry = Math.max(90, Math.min(h / 2 - 100, Math.min(w, h) * 0.34));
-  ids.forEach((id, i) => {
-    // an arc from Jarvis's right, round the bottom, to his left, keeping the top clear for the user
-    const deg = ids.length === 1 ? 90 : -20 + (220 * i) / (ids.length - 1);
+  const arc = (ids, from, to, gap, sx, sy) => ids.forEach((id, i) => {
+    const mid = (from + to) / 2, span = to - from - gap;
+    let deg = ids.length === 1 ? from + span * .7 : from + (span * i) / (ids.length - 1);
+    if (deg > mid - gap / 2) deg += gap;
     const a = deg * Math.PI / 180;
-    pos[id] = { x: w / 2 + rx * Math.cos(a), y: h / 2 + 20 + ry * Math.sin(a) };
+    pos[id] = { x: w / 2 + rx * sx * Math.cos(a), y: h / 2 + 20 + ry * sy * Math.sin(a) };
   });
+  const ids = Object.keys(agents), standing = ids.filter(id => isStanding(agents[id]));
+  arc(ids.filter(id => !standing.includes(id)), 0, 180, 30, 1, 1);   // the crew: round the bottom, middle left clear
+  arc(standing, 205, 335, 44, 1.05, 1);                              // always-on specialists: up top, either side of you
   return pos;
 }
+// ---------- the roster and the key ----------
+function renderRoster() {
+  const list = Object.entries(agents).sort(([, a], [, b]) =>
+    (isStanding(a) - isStanding(b)) || ORDER.indexOf(a.info.status) - ORDER.indexOf(b.info.status));
+  let html = "", before = null;
+  for (const [id, a] of list) {
+    const s = a.info.status, color = T.status[s] || T.status.working, standing = isStanding(a);
+    if (before === false && standing) html += '<span class="divider"></span>';
+    before = standing;
+    const cls = ["pill", ["working", "starting"].includes(s) && "busy", s === "needs you" && "needs",
+                 ["done", "stopped", "failed"].includes(s) && "gone", selected === id && "sel"].filter(Boolean).join(" ");
+    html += `<button class="${cls}" data-id="${esc(id)}" style="--c:${color}" title="${esc(a.info.role)}: ${esc(PLAIN[s] || s)}` +
+            `${standing ? " (always on)" : ""}"><span class="dot"></span>${standing ? '<span class="star">★</span>' : ""}` +
+            `${esc(a.info.name)} <span class="st">${esc(T.statusWord(s))}</span></button>`;
+  }
+  document.getElementById("roster").innerHTML = html;
+}
+document.getElementById("roster").addEventListener("click", ev => {
+  const pill = ev.target.closest(".pill"); if (!pill || !agents[pill.dataset.id]) return;
+  openDrawer(pill.dataset.id); scene3d?.focus(pill.dataset.id);
+});
+function renderLegend() {
+  const box = document.getElementById("legend");
+  const rows = ["working", "waiting", "needs you", "done", "failed"].map(s =>
+    `<div class="row" style="--c:${T.status[s]}"><span class="sw"></span><b>${esc(T.statusWord(s))}</b><i>= ${esc(PLAIN[s])}</i></div>`).join("");
+  box.innerHTML = `<h4 title="Show or hide (L)">KEY <span>${box.classList.contains("closed") ? "+" : "–"}</span></h4><div class="rows">${rows}
+    <div class="row"><span class="star">★</span><i>always-on specialist</i></div>
+    <div class="row" style="--c:${getComputedStyle(document.body).getPropertyValue("--msg").trim() || "#fff"}"><span class="sw"></span><i>beam = a message being sent</i></div></div>`;
+}
+function toggleLegend(open = document.getElementById("legend").classList.contains("closed")) {
+  document.getElementById("legend").classList.toggle("closed", !open);
+  try { localStorage.setItem("jarvis-legend", open ? "1" : "0"); } catch (e) {}
+  renderLegend();
+}
+document.getElementById("legend").addEventListener("click", ev => { if (ev.target.closest("h4")) toggleLegend(); });
+try {   // closed if you closed it, and to start with on a phone (the map's small there)
+  const saved = localStorage.getItem("jarvis-legend");
+  if (saved === "0" || (saved === null && innerWidth < 700)) document.getElementById("legend").classList.add("closed");
+} catch (e) {}
+
 // ---------- 3D (scene3d.js) with the 2D map as the fallback ----------
 let scene3d = null;
 function counters() {
+  renderRoster();
+  const crew = Object.values(agents).filter(a => !isStanding(a) && a.info.kind !== "reviewer");
+  document.getElementById("standing").textContent = Object.values(agents).filter(a => isStanding(a) && !["done", "stopped", "failed"].includes(a.info.status)).length;
   const list = Object.values(agents).map(a => a.info.status);
-  document.getElementById("count").textContent = list.filter(s => !["done", "stopped", "failed"].includes(s)).length;
+  document.getElementById("count").textContent = crew.filter(a => !["done", "stopped", "failed"].includes(a.info.status)).length;
   document.getElementById("working").textContent = list.filter(s => s === "working" || s === "starting").length;
   document.getElementById("needs").textContent = list.filter(s => s === "needs you").length + document.querySelectorAll(".approval").length;
   document.getElementById("empty").style.display = Object.keys(agents).length ? "none" : "block";
@@ -713,7 +831,7 @@ function showTip(id, x, y) {
   else if (id === "user") html = `<b>${esc(T.words.user)}</b><br>${document.querySelectorAll(".approval").length} waiting for your OK.`;
   else {
     const a = agents[id]; if (!a) return;
-    html = `<b>${esc(a.info.name)}</b> · ${esc(T.statusWord(a.info.status))}<br>${esc(a.info.role)}` +
+    html = `<b>${isStanding(a) ? "★ " : ""}${esc(a.info.name)}</b> · ${esc(T.statusWord(a.info.status))} <i>(${esc(PLAIN[a.info.status] || a.info.status)})</i><br>${esc(a.info.role)}` +
            (a.activity ? `<br><i>${esc(a.activity)}</i>` : "") + `<br>${(a.steps || []).length} steps · click to open, right-click for actions`;
   }
   tip.innerHTML = html; tip.style.display = "block";
@@ -745,6 +863,7 @@ document.addEventListener("keydown", ev => {
   if (/^[1-9]$/.test(ev.key) && keys[+ev.key - 1]) applyTheme(keys[+ev.key - 1], true);
   else if (ev.key === "Escape") { closeDrawer(); scene3d?.reset(); document.getElementById("ctx").style.display = "none"; }
   else if (ev.key === "f" || ev.key === "F") toggleWide();
+  else if (ev.key === "l" || ev.key === "L") toggleLegend();
   else if (ev.key === " ") { ev.preventDefault(); scene3d?.toggleRotate(); }
   else if (ev.key === "/") { ev.preventDefault(); document.getElementById("cmd").focus(); }
 });
@@ -761,6 +880,7 @@ function render() {
     const g = el("g", { class: "node", transform: `translate(${pos[id].x},${pos[id].y})` }, layer.nodes);
     const color = kind === "jarvis" ? T.status.working : kind === "user" ? T.status.waiting : (T.status[info.status] || T.status.working);
     const r = T.node(g, kind, info || {}, color);
+    if (kind === "agent" && info.kind === "standing") txt(g, "★", { x: r * .85, y: -r * .7, class: "star", "font-size": 18, fill: "#ffd84a" });
     if (kind === "agent") {
       txt(g, T.statusWord(info.status), { y: r + (themeKey === "village" ? 34 : themeKey === "hud" ? 44 : 22), class: "sub" });
       const doing = agents[id].activity || "";
@@ -771,11 +891,6 @@ function render() {
   };
   place("user", "user"); place("jarvis", "jarvis");
   for (const [id, a] of Object.entries(agents)) place(id, "agent", a.info);
-  document.getElementById("empty").style.display = Object.keys(agents).length ? "none" : "block";
-  const list = Object.values(agents).map(a => a.info.status);
-  document.getElementById("count").textContent = list.filter(s => !["done", "stopped", "failed"].includes(s)).length;
-  document.getElementById("working").textContent = list.filter(s => s === "working" || s === "starting").length;
-  document.getElementById("needs").textContent = list.filter(s => s === "needs you").length + document.querySelectorAll(".approval").length;
 }
 function flyMessage(from, to, color, kind, text) {
   if (scene3d && document.body.classList.contains("three")) { scene3d.message(from, to, kind, text); return; }
@@ -815,13 +930,38 @@ function beam2D(a, b, arc, color, dur) {
 }
 
 // ---------- feed & drawer ----------
+const TABS = [["all", "All"], ["talk", "Talk"], ["work", "Work"], ["result", "Results"], ["you", "You"]];
+const CATEGORY = { msg: "talk", jar: "talk", act: "work", res: "result", warn: "you", you: "you" };
+let feedFilter = "all";
+function shown(d) {
+  return (feedFilter === "all" || d.dataset.cat === feedFilter) && (!selected || !d.dataset.agent || d.dataset.agent === selected);
+}
+function refilter() { for (const d of document.querySelectorAll("#feed .item")) d.style.display = shown(d) ? "" : "none"; }
+function renderTabs() {
+  const counts = {};
+  for (const d of document.querySelectorAll("#feed .item")) counts[d.dataset.cat] = (counts[d.dataset.cat] || 0) + 1;
+  document.getElementById("tabs").innerHTML = TABS.map(([key, label]) =>
+    `<button data-tab="${key}" class="${feedFilter === key ? "on" : ""}">${label}${key !== "all" && counts[key] ? `<span class="n">${counts[key]}</span>` : ""}</button>`).join("");
+}
+document.getElementById("tabs").addEventListener("click", ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  feedFilter = b.dataset.tab; renderTabs(); refilter();
+  const box = document.getElementById("feed"); box.scrollTop = box.scrollHeight;
+});
 function feed(cls, meta, text, agentId) {
   const box = document.getElementById("feed");
+  const full = String(text ?? ""), [time, ...rest] = meta.split(" · "), key = `${cls}|${rest.join(" · ")}|${full}`;
+  const last = box.lastElementChild;
+  if (last && last.dataset.key === key) {   // the same thing again: count it instead of repeating it
+    last.dataset.count = +(last.dataset.count || 1) + 1;
+    last.querySelector(".meta").innerHTML = `${esc(meta)}<span class="dup">×${last.dataset.count}</span>`;
+    return;
+  }
   const d = document.createElement("div");
-  d.className = "item " + cls; d.dataset.agent = agentId || "";
-  const full = String(text ?? ""), long = full.length > 320;
-  d.innerHTML = `<div class="meta">${esc(meta)}</div><span class="txt">${esc(long ? full.slice(0, 300) + "…" : full)}</span>`
-              + (long ? ` <a href="#" class="more">show more</a>` : "");
+  d.className = "item " + cls; d.dataset.agent = agentId || ""; d.dataset.cat = CATEGORY[cls] || "work"; d.dataset.key = key;
+  const long = full.length > 320, color = agentId && agents[agentId] ? T.status[agents[agentId].info.status] : "";
+  d.innerHTML = `<div class="meta">${color ? `<span class="who-dot" style="--c:${color}"></span>` : ""}${esc(meta)}</div>` +
+                `<span class="txt">${esc(long ? full.slice(0, 300) + "…" : full)}</span>` + (long ? ` <a href="#" class="more">show more</a>` : "");
   if (long) d.querySelector(".more").onclick = ev => {
     ev.preventDefault(); const open = ev.target.textContent === "show less";
     d.querySelector(".txt").textContent = open ? full.slice(0, 300) + "…" : full;
@@ -833,8 +973,9 @@ function feed(cls, meta, text, agentId) {
   });
   box.appendChild(d);
   while (box.children.length > 400) box.firstChild.remove();
-  if (selected && agentId && agentId !== selected) d.style.display = "none";
+  if (!shown(d)) d.style.display = "none";
   box.scrollTop = box.scrollHeight;
+  renderTabs();
 }
 function openDrawer(id) {
   // Built once per agent; refreshDrawer() updates only what changes, so a half-typed message and the buttons stay put.
@@ -843,7 +984,7 @@ function openDrawer(id) {
     const info = agents[id].info;
     const drawer = document.getElementById("drawer");
     drawer.innerHTML = `<button class="close" onclick="closeDrawer()">&times;</button>
-      <h3>${esc(info.name)}</h3><div class="role" id="d-role"></div>
+      <h3>${isStanding(agents[id]) ? '<span class="star">★</span>' : ""}${esc(info.name)}</h3><div class="role" id="d-role"></div>
       <div class="section">TASK</div><pre>${esc(info.task)}</pre>
       <div id="d-result"></div>
       <div class="section">RECENT STEPS</div><div class="steps" id="d-steps"></div>
@@ -853,7 +994,7 @@ function openDrawer(id) {
       </div>`;
     drawer.classList.add("open");
     document.getElementById("dm").addEventListener("keydown", e => { if (e.key === "Enter") sendDM(); });
-    for (const d of document.querySelectorAll("#feed .item")) d.style.display = (!d.dataset.agent || d.dataset.agent === id) ? "" : "none";
+    refilter(); renderRoster();
   }
   refreshDrawer();
 }
@@ -861,6 +1002,7 @@ function refreshDrawer() {
   if (!selected || !agents[selected]) return;
   const a = agents[selected], info = a.info;
   document.getElementById("d-role").innerHTML = `${esc(info.role)} &middot; <span style="color:${T.status[info.status]}">${esc(T.statusWord(info.status))}</span>
+    <span style="opacity:.75">(${esc(PLAIN[info.status] || info.status)})</span>${isStanding(a) ? " &middot; ★ always on" : ""}
     &middot; ${(a.steps || []).length || info.steps || 0} steps`;
   document.getElementById("d-result").innerHTML = info.result ? `<div class="section">RESULT</div><pre>${esc(info.result)}</pre>` : "";
   document.getElementById("d-steps").innerHTML =
@@ -869,7 +1011,7 @@ function refreshDrawer() {
 }
 function closeDrawer() {
   selected = null; document.getElementById("drawer").classList.remove("open");
-  for (const d of document.querySelectorAll("#feed .item")) d.style.display = "";
+  refilter(); renderRoster();
 }
 function sendDM() {
   const input = document.getElementById("dm"); const text = input.value.trim(); if (!text) return;

@@ -113,6 +113,25 @@ function moveParticles(points, t, dt, speed) {   // speed > 0 rises, < 0 falls; 
   }
   p.needsUpdate = true;
 }
+function palmTexture() {   // a palm tree silhouette with a neon rim, for the synthwave roadside
+  if (textureCache.palm) return textureCache.palm;
+  const c = document.createElement("canvas"); c.width = 256; c.height = 512; const g = c.getContext("2d");
+  g.shadowColor = "#ff2bd6"; g.shadowBlur = 14; g.strokeStyle = "#1a0533"; g.lineCap = "round";
+  for (let w = 16; w > 6; w -= 3) {   // the trunk, thick at the bottom
+    g.lineWidth = w; g.beginPath(); g.moveTo(120, 510); g.quadraticCurveTo(100, 300, 150, 130); g.stroke();
+  }
+  g.lineWidth = 9;
+  for (const [dx, dy, bend] of [[-110, 10, 50], [-90, 70, 40], [-40, 110, 20], [110, 20, -50], [95, 80, -40], [45, 115, -20], [0, -60, 30]]) {
+    g.beginPath(); g.moveTo(150, 130); g.quadraticCurveTo(150 + dx / 2, 130 + dy / 2 - bend, 150 + dx, 130 + dy); g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return (textureCache.palm = t);
+}
+function every(scene, key, seconds, t, run) {   // run something every so often (a little irregularly) from a theme's tick
+  const next = (scene.userData.next ??= {});
+  if (next[key] === undefined) next[key] = t + seconds * Math.random();
+  if (t >= next[key]) { next[key] = t + seconds * (.6 + Math.random() * .8); run(); }
+}
 const sprite = (tex, size, opts = {}) => {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, ...opts }));
   s.scale.set(size, size, 1); return s;
@@ -151,8 +170,13 @@ const THEMES = {
       }
       const sweep = new THREE.Mesh(new THREE.CircleGeometry(13.4, 48, 0, .55), new THREE.MeshBasicMaterial({ color: 0xffa630, transparent: true, opacity: .13, depthWrite: false, blending: THREE.AdditiveBlending }));
       sweep.rotation.x = -Math.PI / 2; sweep.position.y = -1.54; scene.add(sweep); scene.userData.sweep = sweep;
+      const dust = risingPoints(280, 30, -1.4, 7, 0xffc070, .05); dust.material.opacity = .45; scene.add(dust); scene.userData.dust = dust;
     },
-    tick(scene, t, dt) { scene.userData.sweep.rotation.z -= dt * .8; },
+    tick(scene, t, dt, fx) {
+      scene.userData.sweep.rotation.z -= dt * .8;
+      moveParticles(scene.userData.dust, t, dt, .15);
+      every(scene, "ping", 6, t, () => fx.ping(new THREE.Vector3(0, -1.5, 0), 0xffa630, 13));   // sonar from the command table
+    },
     node(kind, color) {   // a metal hex pedestal with an amber trim and a hologram floating above it
       const g = new THREE.Group(), big = kind === "jarvis", r = big ? 1.25 : kind === "user" ? .7 : .8;
       const base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.1, .35, 6), mat(0x2b333e, { metalness: .75, roughness: .35 }));
@@ -215,8 +239,22 @@ const THEMES = {
       for (let i = 0; i < 700; i++) pts.push((Math.random() - .5) * 200, 10 + Math.random() * 60, -40 - Math.random() * 80);
       stars.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
       scene.add(new THREE.Points(stars, new THREE.PointsMaterial({ color: 0xffd1f5, size: .25, fog: false })));
+      const palms = [];
+      for (const side of [-1, 1]) for (let i = 0; i < 9; i++) {   // palm trees lining the road
+        const palm = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 9), new THREE.MeshBasicMaterial({ map: palmTexture(), transparent: true, depthWrite: false }));
+        palm.position.set(side * (12 + (i % 3) * 1.6), 2.9, -64 + i * 9 + (side > 0 ? 4.5 : 0)); palm.scale.x = side * (.85 + (i % 2) * .3);
+        scene.add(palm); palms.push(palm);
+      }
+      scene.userData.palms = palms;
     },
-    tick(scene, t) { scene.userData.grid.position.z = (t * 4) % 2; },   // the road rushing towards you
+    tick(scene, t, dt, fx) {
+      scene.userData.grid.position.z = (t * 4) % 2;   // the road rushing towards you
+      for (const palm of scene.userData.palms) { palm.position.z += dt * 4; if (palm.position.z > 16) palm.position.z -= 81; }
+      every(scene, "star", 3.5, t, () => {
+        const x = (Math.random() - .5) * 90, from = new THREE.Vector3(x, 30 + Math.random() * 18, -70);
+        fx.shootingStar(0xffd1f5, from, from.clone().add(new THREE.Vector3(Math.sign(-x || 1) * 22, -10, 0)), 1100);
+      });
+    },
     node(kind, color) {   // neon wireframe solids: a pyramid per agent, an icosahedron for Jarvis, a cube for you
       const g = new THREE.Group(), big = kind === "jarvis", r = big ? 1.4 : kind === "user" ? .75 : .9;
       const geo = big ? new THREE.IcosahedronGeometry(r, 0) : kind === "user" ? new THREE.BoxGeometry(r * 1.2, r * 1.2, r * 1.2) : new THREE.ConeGeometry(r, r * 1.7, 4);
@@ -264,8 +302,25 @@ const THEMES = {
       for (const [color, x, y, z] of [[0x7b2bff, -45, 12, -60], [0xff2b9d, 50, 6, -55], [0x2bb5ff, -5, 24, -85]]) {   // nebulae
         const s = sprite(glowTexture(), 70, { color, opacity: .2, blending: THREE.AdditiveBlending }); s.position.set(x, y, z); scene.add(s);
       }
+      // an asteroid belt circling the whole system
+      const rocks = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(.16, 0), mat(0x9a8c84, { roughness: 1 }), 420);
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s3 = new THREE.Vector3();
+      for (let i = 0; i < 420; i++) {
+        const a = Math.random() * Math.PI * 2, d = 13.5 + Math.random() * 3.2, k = .4 + Math.random() * 1.6;
+        m4.compose(new THREE.Vector3(Math.cos(a) * d, -1.2 + (Math.random() - .5) * .9, Math.sin(a) * d),
+                   q.setFromEuler(e.set(Math.random() * 3, Math.random() * 3, 0)), s3.set(k, k * (.6 + Math.random() * .6), k));
+        rocks.setMatrixAt(i, m4);
+      }
+      const belt = new THREE.Group(); belt.add(rocks); scene.add(belt); scene.userData.belt = belt;
     },
-    tick(scene, t, dt) { scene.userData.galaxy.rotation.y += dt * .03; },
+    tick(scene, t, dt, fx) {
+      scene.userData.galaxy.rotation.y += dt * .03;
+      scene.userData.belt.rotation.y -= dt * .05;
+      every(scene, "comet", 6, t, () => {
+        const from = new THREE.Vector3().randomDirection().multiplyScalar(60).setY(10 + Math.random() * 25);
+        fx.shootingStar(0xbfe6ff, from, from.clone().multiplyScalar(.35).setY(from.y - 12), 1600);
+      });
+    },
     node(kind, color, info) {
       const g = new THREE.Group(), add = THREE.AdditiveBlending;
       if (kind === "jarvis") {   // a star with a two-layer corona (always gold, whatever the status)
@@ -327,8 +382,23 @@ const THEMES = {
       bits.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
       const motes = new THREE.Points(bits, new THREE.PointsMaterial({ color: 0x00ff66, size: .06, transparent: true, opacity: .7 }));
       motes.userData.drift = true; scene.add(motes);
+      // data packets racing along the floor grid towards the core
+      const packets = new THREE.InstancedMesh(new THREE.BoxGeometry(.1, .1, .45), new THREE.MeshBasicMaterial({ color: 0x7dffaa }), 60);
+      scene.add(packets);
+      scene.userData.packets = { mesh: packets, list: Array.from({ length: 60 }, () => ({
+        axis: Math.random() < .5 ? "x" : "z", lane: Math.round((Math.random() - .5) * 24), at: 6 + Math.random() * 16,
+        dir: Math.random() < .5 ? 1 : -1, speed: 3 + Math.random() * 5 })) };
     },
     tick(scene, t, dt) {
+      const packets = scene.userData.packets, m4 = new THREE.Matrix4(), turn = new THREE.Matrix4().makeRotationY(Math.PI / 2);
+      packets.list.forEach((p, i) => {
+        p.at -= p.speed * dt; if (p.at < 1.5) { p.at = 14 + Math.random() * 8; p.lane = Math.round((Math.random() - .5) * 24); }
+        const along = p.at * p.dir;
+        m4.makeTranslation(p.axis === "x" ? along : p.lane, -1.55, p.axis === "x" ? p.lane : along);
+        if (p.axis === "x") m4.multiply(turn);
+        packets.mesh.setMatrixAt(i, m4);
+      });
+      packets.mesh.instanceMatrix.needsUpdate = true;
       const rain = scene.userData.rain; rain.wait -= dt; if (rain.wait > 0) return; rain.wait = .05;
       const g = rain.g; g.fillStyle = "rgba(0,7,0,.13)"; g.fillRect(0, 0, 512, 512);
       g.font = "bold 15px monospace";
@@ -414,7 +484,12 @@ const THEMES = {
         rock.position.set(Math.cos(a) * d, -1.8, Math.sin(a) * d); rock.rotation.set(Math.random(), Math.random(), 0); scene.add(rock);
       }
       const bubbles = risingPoints(500, 40, -1.8, 12, 0xbff8ff, .09); scene.add(bubbles);
-      scene.userData.abyss = { tex, shafts, kelp, bubbles };
+      const fishGeo = new THREE.ConeGeometry(.07, .32, 5); fishGeo.rotateZ(-Math.PI / 2);   // pointing along +x
+      const fish = new THREE.InstancedMesh(fishGeo, new THREE.MeshBasicMaterial({ color: 0x9ff8ff, transparent: true, opacity: .85 }), 90);
+      const school = Array.from({ length: 90 }, () => ({ a: Math.random() * Math.PI * 2, r: 10.5 + (Math.random() - .5) * 2.4,
+                                                         y: 2.4 + (Math.random() - .5) * 1.6, wobble: Math.random() * 6 }));
+      scene.add(fish);
+      scene.userData.abyss = { tex, shafts, kelp, bubbles, fish, school };
     },
     tick(scene, t, dt) {
       const sea = scene.userData.abyss;
@@ -422,6 +497,13 @@ const THEMES = {
       for (const shaft of sea.shafts) shaft.material.opacity = .035 + Math.sin(t * .6 + shaft.userData.phase) * .02;
       for (const k of sea.kelp) { k.rotation.z = Math.sin(t * .8 + k.userData.phase) * .08; k.rotation.x = Math.cos(t * .6 + k.userData.phase) * .06; }
       moveParticles(sea.bubbles, t, dt, .6);
+      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
+      sea.school.forEach((f, i) => {   // the school circles slowly, each fish weaving a little
+        const a = f.a + t * .18, r = f.r + Math.sin(t * .9 + f.wobble) * .3;
+        const at = new THREE.Vector3(Math.cos(a) * r, f.y + Math.sin(t * 1.3 + f.wobble) * .25, Math.sin(a) * r);
+        m4.compose(at, q.setFromAxisAngle(up, -a - Math.PI / 2), one); sea.fish.setMatrixAt(i, m4);
+      });
+      sea.fish.instanceMatrix.needsUpdate = true;
     },
     node(kind, color) {
       const g = new THREE.Group(), add = THREE.AdditiveBlending;
@@ -490,11 +572,15 @@ const THEMES = {
       const embers = risingPoints(600, 40, -1.5, 13, 0xff8a2a, .1); scene.add(embers);
       scene.userData.forge = { ground, crater, embers };
     },
-    tick(scene, t, dt) {
+    tick(scene, t, dt, fx) {
       const f = scene.userData.forge;
       f.ground.material.emissiveIntensity = .6 + Math.sin(t * 1.3) * .18;
       f.crater.material.opacity = .65 + Math.sin(t * 2.3) * .15;
       moveParticles(f.embers, t, dt, .9);
+      every(scene, "geyser", 3.5, t, () => {   // lava bursting up through the cracks
+        const a = Math.random() * Math.PI * 2, d = 9 + Math.random() * 5;
+        fx.fountain(new THREE.Vector3(Math.cos(a) * d, -1.5, Math.sin(a) * d), [0xff7a1a, 0xffd84a, 0xff3a1a], 34, 5.5);
+      });
     },
     node(kind, color) {
       const g = new THREE.Group(), add = THREE.AdditiveBlending, stone = mat(0x3a302c, { roughness: .95 });
@@ -592,9 +678,16 @@ const THEMES = {
       scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: .25, fog: false })));
       const moonGlow = sprite(glowTexture(), 10, { color: 0xdfe8ff, opacity: .8, fog: false }); moonGlow.position.set(28, 22, -70); scene.add(moonGlow);
       const snow = risingPoints(1400, 44, -1.9, 14, 0xffffff, .07); snow.material.blending = THREE.NormalBlending; scene.add(snow);
-      scene.userData.aurora = { curtains, snow };
+      const sparkles = [0, 1].map(() => {   // frost glinting on the snow, two sets twinkling in turn
+        const pts = [];
+        for (let i = 0; i < 160; i++) { const a = Math.random() * Math.PI * 2, d = 4 + Math.random() * 12; pts.push(Math.cos(a) * d, -1.75 + Math.random() * .15, Math.sin(a) * d); }
+        const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+        const p = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xe8f6ff, size: .09, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+        scene.add(p); return p;
+      });
+      scene.userData.aurora = { curtains, snow, sparkles };
     },
-    tick(scene, t, dt) {
+    tick(scene, t, dt, fx) {
       const sky = scene.userData.aurora;
       for (const c of sky.curtains) {
         const p = c.geometry.attributes.position, base = c.userData.base;
@@ -603,6 +696,11 @@ const THEMES = {
         c.material.opacity = .45 + Math.sin(t * .7 + c.userData.phase) * .15;
       }
       moveParticles(sky.snow, t, dt, -.8);
+      sky.sparkles.forEach((s, i) => { s.material.opacity = .25 + .75 * Math.max(0, Math.sin(t * 2.2 + i * Math.PI)); });
+      every(scene, "star", 4, t, () => {
+        const from = new THREE.Vector3((Math.random() - .5) * 120, 28 + Math.random() * 20, -60 - Math.random() * 20);
+        fx.shootingStar(0xdff4ff, from, from.clone().add(new THREE.Vector3((Math.random() < .5 ? -1 : 1) * 26, -12, 0)), 1000);
+      });
     },
     node(kind, color) {
       const g = new THREE.Group(), add = THREE.AdditiveBlending, snow = mat(0xf2f7ff, { roughness: 1 });
@@ -670,6 +768,24 @@ const THEMES = {
       dust.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
       const motes = new THREE.Points(dust, new THREE.PointsMaterial({ color: 0x4fe3ff, size: .05, transparent: true, opacity: .6 }));
       motes.userData.drift = true; scene.add(motes);
+      // great holographic rings turning around the whole room, and a scan ring sweeping up through it
+      const rings = [[17, .4, .12], [20, -.25, -.08], [23, .1, .05]].map(([radius, tilt, speed]) => {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, .03, 6, 200), new THREE.MeshBasicMaterial({ color: 0x4fe3ff, transparent: true, opacity: .22 }));
+        ring.rotation.set(Math.PI / 2 + tilt, 0, 0); ring.position.y = 2; ring.userData.speed = speed; scene.add(ring);
+        for (let i = 0; i < 24; i++) {   // tick marks along each ring
+          const tick = new THREE.Mesh(new THREE.BoxGeometry(.06, .5, .06), ring.material); const a = i / 24 * Math.PI * 2;
+          tick.position.set(Math.cos(a) * radius, Math.sin(a) * radius, 0); tick.rotation.z = a; ring.add(tick);
+        }
+        return ring;
+      });
+      const scan = new THREE.Mesh(new THREE.TorusGeometry(15, .05, 6, 160), new THREE.MeshBasicMaterial({ color: 0x4fe3ff, transparent: true }));
+      scan.rotation.x = Math.PI / 2; scene.add(scan);
+      scene.userData.hud = { rings, scan };
+    },
+    tick(scene, t) {
+      const hud = scene.userData.hud;
+      for (const ring of hud.rings) ring.rotation.z += ring.userData.speed * .016;
+      const k = (t % 7) / 7; hud.scan.position.y = -1.5 + k * 11; hud.scan.material.opacity = .55 * (1 - k);
     },
     node(kind, color) {   // an arc reactor: glowing core, rings turning on different axes, a light beam and a floor ring
       const g = new THREE.Group(), r = kind === "jarvis" ? 1.5 : kind === "user" ? .8 : 1;
@@ -710,7 +826,7 @@ const THEMES = {
       water.rotation.x = -Math.PI / 2; water.position.y = -2.6; water.userData.waves = true; scene.add(water);
       // trees around the edge, keeping clear of where buildings go
       for (let i = 0; i < 26; i++) {
-        const a = Math.random() * Math.PI * 2, d = 9 + Math.random() * 2.3;
+        const a = Math.random() * Math.PI * 2, d = 10.4 + Math.random() * 1.3;   // round the edge, clear of the huts
         const tree = new THREE.Group();
         const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.12, .16, .7, 6), mat(0x7a4a22)); trunk.position.y = .35;
         const leaves = new THREE.Mesh(new THREE.ConeGeometry(.55 + Math.random() * .2, 1.4, 7), mat(0x3f9a3a)); leaves.position.y = 1.2;
@@ -723,9 +839,46 @@ const THEMES = {
           const puff = new THREE.Mesh(new THREE.SphereGeometry(1 + Math.random() * .8, 10, 8), mat(0xffffff, { roughness: 1 }));
           puff.position.set(j * 1.3 - 2, Math.random() * .5, Math.random() * .8); cloud.add(puff);
         }
-        cloud.position.set((Math.random() - .5) * 70, 9 + Math.random() * 5, (Math.random() - .5) * 50 - 10);
+        cloud.position.set((Math.random() - .5) * 90, 15 + Math.random() * 5, -32 - Math.random() * 35);   // high up and behind
         cloud.userData.cloud = .3 + Math.random() * .5; scene.add(cloud);
       }
+      // a windmill on its own little islet, its sails turning
+      const islet = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.6, 1, 24), [mat(0xe8d39a), mat(0x7cc94a), mat(0xd9bf7c)]);
+      islet.position.set(15, -2.3, -9); scene.add(islet);
+      const mill = new THREE.Group(); mill.position.set(15, -1.8, -9);
+      const tower = new THREE.Mesh(new THREE.CylinderGeometry(.55, .85, 3.2, 8), mat(0xf2e6cc)); tower.position.y = 1.6;
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(.75, .9, 8), mat(0xd6402f)); cap.position.y = 3.6;
+      const sails = new THREE.Group(); sails.position.set(0, 3, .75);
+      for (let i = 0; i < 4; i++) {
+        const arm = new THREE.Group(); arm.rotation.z = i * Math.PI / 2;
+        const sail = new THREE.Mesh(new THREE.BoxGeometry(.4, 1.9, .04), mat(0xfff8e6)); sail.position.y = 1.05; arm.add(sail); sails.add(arm);
+      }
+      mill.add(tower, cap, sails); mill.rotation.y = -.9; mill.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(mill);
+      const birds = Array.from({ length: 7 }, (_, i) => {   // a flock circling overhead
+        const bird = new THREE.Group(), wing = new THREE.BoxGeometry(.5, .03, .14), dark = mat(0x3a2a20);
+        const left = new THREE.Mesh(wing, dark), right = new THREE.Mesh(wing, dark);
+        left.position.x = -.24; right.position.x = .24; bird.add(left, right);
+        bird.userData = { left, right, a: i * .5, r: 11 + (i % 3), y: 7 + (i % 2) }; scene.add(bird); return bird;
+      });
+      const boat = new THREE.Group();   // a little sailboat going round the island
+      const hullGeo = new THREE.BoxGeometry(1.4, .35, .5); const hull = new THREE.Mesh(hullGeo, mat(0x8a5523));
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(.03, .03, 1.5, 6), mat(0x5a3410)); mast.position.y = .9;
+      const sail = new THREE.Mesh(new THREE.ConeGeometry(.55, 1.2, 3), mat(0xfff8e6)); sail.position.set(.15, 1, 0); sail.scale.z = .15;
+      boat.add(hull, mast, sail); scene.add(boat);
+      scene.userData.village = { sails, birds, boat };
+    },
+    tick(scene, t) {
+      const v = scene.userData.village;
+      v.sails.rotation.z = -t * .9;
+      for (const b of v.birds) {
+        const a = b.userData.a + t * .25;
+        b.position.set(Math.cos(a) * b.userData.r, b.userData.y + Math.sin(t * 2 + b.userData.a) * .3, Math.sin(a) * b.userData.r);
+        b.rotation.y = -a; const flap = Math.sin(t * 9 + b.userData.a * 3) * .5;
+        b.userData.left.rotation.z = flap; b.userData.right.rotation.z = -flap;
+      }
+      const a = -t * .06;
+      v.boat.position.set(Math.cos(a) * 17, -2.45 + Math.sin(t * 1.4) * .08, Math.sin(a) * 17);
+      v.boat.rotation.set(Math.sin(t * 1.1) * .06, -a + Math.PI, Math.sin(t * 1.3) * .05);
     },
     node(kind, color) {
       const g = new THREE.Group(); let tint = [], height = 2;
@@ -824,6 +977,44 @@ export function createScene(container, hooks) {
         if (s > 2) { scene.remove(puff); return false; } return true;
       });
     },
+    ping(at, color, radius, ms = 2600) {   // a thin ring spreading out across the floor
+      const m = new THREE.Mesh(new THREE.RingGeometry(.97, 1, 128), new THREE.MeshBasicMaterial({ color, transparent: true,
+        depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+      m.rotation.x = -Math.PI / 2; m.position.copy(at); scene.add(m);
+      const start = performance.now();
+      effects.push(now => {
+        const k = Math.min(1, (now - start) / ms);
+        m.scale.setScalar(.5 + k * radius); m.material.opacity = .8 * (1 - k);
+        if (k >= 1) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); return false; } return true;
+      });
+    },
+    shootingStar(color, from, to, ms) {   // a bright head with a fading tail
+      const head = sprite(glowTexture(), 1.1, { color, blending: THREE.AdditiveBlending, fog: false });
+      const tail = new THREE.Line(new THREE.BufferGeometry().setFromPoints([from, from]),
+        new THREE.LineBasicMaterial({ color, transparent: true, fog: false, blending: THREE.AdditiveBlending }));
+      scene.add(head, tail);
+      const start = performance.now();
+      effects.push(now => {
+        const k = Math.min(1, (now - start) / ms), at = from.clone().lerp(to, k), back = from.clone().lerp(to, Math.max(0, k - .3));
+        head.position.copy(at); tail.geometry.setFromPoints([back, at]);
+        head.material.opacity = tail.material.opacity = 1 - k * k;
+        if (k >= 1) { scene.remove(head, tail); tail.geometry.dispose(); return false; } return true;
+      });
+    },
+    fountain(at, colors, count, height) {   // sparks thrown up that fall back down
+      for (let i = 0; i < count; i++) {
+        const p = sprite(glowTexture(), .3 + Math.random() * .3, { color: colors[i % colors.length], blending: THREE.AdditiveBlending });
+        p.position.copy(at); scene.add(p);
+        const a = Math.random() * Math.PI * 2, out = Math.random() * 1.4, up = height * (.6 + Math.random() * .5), start = performance.now();
+        effects.push(now => {
+          const s = (now - start) / 1000;
+          p.position.set(at.x + Math.cos(a) * out * s, at.y + up * s - 4.9 * s * s, at.z + Math.sin(a) * out * s);
+          p.material.opacity = Math.max(0, 1 - s / 1.6);
+          if (s > 1.6 || p.position.y < at.y - .2) { scene.remove(p); return false; } return true;
+        });
+      }
+      fx.ping(at.clone().setY(at.y + .05), colors[0], 2.2, 900);
+    },
     spawn(at, color) {
       fx.ring(at.clone().setY(-1.4), color, 2.5);
       for (let i = 0; i < 16; i++) {
@@ -838,16 +1029,34 @@ export function createScene(container, hooks) {
     },
   };
 
-  // ---- layout: Jarvis in the middle, the user behind, agents in an arc in front ----
+  // ---- layout: Jarvis in the middle and you behind him. The crew working on tasks stand in an arc in front, the
+  // standing specialists in an arc behind, either side of you. The middle of each arc stays clear, so nothing stands
+  // between you and Jarvis or right in front of him.
+  function arc(ids, [from, to], gap, rx, rz) {
+    const mid = (from + to) / 2, span = to - from - gap, out = {};
+    ids.forEach((id, i) => {
+      let deg = ids.length === 1 ? from + span * .7 : from + (span * i) / (ids.length - 1);
+      if (deg > mid - gap / 2) deg += gap;
+      const a = deg * Math.PI / 180, grow = 1 + Math.max(0, ids.length - 5) * .09;   // a bigger crew, a wider arc
+      out[id] = new THREE.Vector3(Math.cos(a) * rx * grow, 0, Math.sin(a) * rz * grow);
+    });
+    return out;
+  }
   function layout() {
     const pos = { jarvis: new THREE.Vector3(0, 0, 0), user: new THREE.Vector3(0, 0, -6.5) };
     const ids = Object.keys(nodes).filter(id => nodes[id].kind === "agent");
-    ids.forEach((id, i) => {
-      const deg = ids.length === 1 ? 90 : -15 + (210 * i) / (ids.length - 1);
-      const a = deg * Math.PI / 180;
-      pos[id] = new THREE.Vector3(Math.cos(a) * 7, 0, Math.sin(a) * 6);
-    });
+    const standing = ids.filter(id => nodes[id].info?.kind === "standing"), crew = ids.filter(id => !standing.includes(id));
+    Object.assign(pos, arc(crew, [8, 172], 30, 7.4, 6.2), arc(standing, [210, 330], 36, 9.4, 8.2));
     return pos;
+  }
+  // back the camera off when the team spreads wider than the view
+  let fit = 1, userMoved = false;
+  function fitTo(pos) {
+    const spread = Math.max(7, ...Object.values(pos).map(p => Math.abs(p.x) * 1.15), ...Object.values(pos).map(p => Math.abs(p.z) * 1.4));
+    const want = Math.min(1.45, Math.max(1, spread / 8.2));
+    if (Math.abs(want - fit) < .04) return;
+    fit = want; resize();
+    if (!userMoved) tweenCamera(HOME.pos.clone(), HOME.target.clone());
   }
 
   function colorFor(status) { return theme.status[status] ?? theme.status.working; }
@@ -903,8 +1112,9 @@ export function createScene(container, hooks) {
     const icon = themeKey === "village" && n.kind === "agent"
       ? ({ starting: "🧳", working: "🔨", waiting: "💤", "needs you": "❗", done: "💰", stopped: "🏳️", failed: "💥" }[n.status] || "🔨") : "";
     const badge = themeKey === "village" && n.kind === "agent" ? hooks.roleIcon(n.info) : "";
+    const star = n.kind === "agent" && n.info?.kind === "standing" ? `<span class="star" title="Always on">★</span>` : "";
     n.label.element.innerHTML =
-      `${icon ? `<div class="bubble">${icon}</div>` : ""}<div class="name">${badge ? `<span class="badge">${badge}</span>` : ""}${escapeHtml(name)}</div>` +
+      `${icon ? `<div class="bubble">${icon}</div>` : ""}<div class="name">${star}${badge ? `<span class="badge">${badge}</span>` : ""}${escapeHtml(name)}</div>` +
       (sub ? `<div class="state" style="--c:#${new THREE.Color(colorFor(n.status)).getHexString()}">${escapeHtml(sub)}</div>` : "") +
       (doing ? `<div class="doing">${escapeHtml(doing.length > 30 ? doing.slice(0, 29) + "…" : doing)}</div>` : "");
   }
@@ -935,6 +1145,7 @@ export function createScene(container, hooks) {
     for (const k of Object.keys(nodes)) delete nodes[k];
     for (const k of Object.keys(links)) delete links[k];
     for (const k of Object.keys(threads)) delete threads[k];
+    for (const k of Object.keys(tagShown)) delete tagShown[k];
     effects.length = 0;
     themeKey = THEMES[key] ? key : "command"; theme = THEMES[themeKey];
     scene = new THREE.Scene(); scene.background = new THREE.Color(theme.background);
@@ -969,7 +1180,8 @@ export function createScene(container, hooks) {
     hooks.onHover(id, ev.clientX, ev.clientY);
   });
   renderer.domElement.addEventListener("pointerleave", () => { hovered = null; hooks.onHover(null); });
-  renderer.domElement.addEventListener("pointerdown", ev => { downAt = [ev.clientX, ev.clientY]; controls.autoRotate = false; });
+  renderer.domElement.addEventListener("pointerdown", ev => { downAt = [ev.clientX, ev.clientY]; controls.autoRotate = false; userMoved = true; });
+  renderer.domElement.addEventListener("wheel", () => { userMoved = true; }, { passive: true });
   renderer.domElement.addEventListener("pointerup", ev => {
     if (!downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 5 || ev.button !== 0) return;
     const id = pickAt(ev);
@@ -1010,7 +1222,7 @@ export function createScene(container, hooks) {
       scene.remove(nodes[id].group); nodes[id].label.element.remove(); scene.remove(links[id]); delete nodes[id]; delete links[id];
     }
     updateLabel("jarvis"); updateLabel("user");
-    const pos = layout();
+    const pos = layout(); fitTo(pos);
     for (const [id, n] of Object.entries(nodes)) {
       n.base.copy(pos[id]);
       if (!n.placed) { n.group.position.copy(pos[id]); n.placed = true; if (n.spawnAt) fx.spawn(pos[id].clone(), colorFor(n.status)); }
@@ -1019,6 +1231,7 @@ export function createScene(container, hooks) {
 
   // ---- a message: a beam of light draws itself from sender to receiver, carrying a preview of what was said ----
   const threads = {};          // "a|b" -> { line, a, b, last }: a faint line left between agents who have been talking
+  const tagShown = {};         // "a|b" -> the message text showing over that pair's beam (a newer one replaces it)
   function arcBetween(a, b) {
     const A = a.group.position.clone().setY(a.group.userData.height * .55), B = b.group.position.clone().setY(b.group.userData.height * .55);
     const mid = A.clone().add(B).multiplyScalar(.5); mid.y += A.distanceTo(B) * (themeKey === "village" ? .45 : .3);
@@ -1042,12 +1255,14 @@ export function createScene(container, hooks) {
     const trail = glowy ? Array.from({ length: 10 }, (_, i) => {
       const s = sprite(glowTexture(), .5 - i * .035, { color, blending: THREE.AdditiveBlending, opacity: .5 - i * .045 }); scene.add(s); return s;
     }) : [];
-    let tag = null;   // what was said, riding along with it
+    let tag = null;   // what was said, floating above the middle of the beam
+    const pair = [from, to].sort().join("|");
     if (text) {
+      if (tagShown[pair]) { scene.remove(tagShown[pair]); tagShown[pair].element.remove(); }
       const div = document.createElement("div"); div.className = "msg3d";
       div.textContent = text.length > 70 ? text.slice(0, 68) + "…" : text;
       div.style.setProperty("--c", "#" + new THREE.Color(color).getHexString());
-      tag = new CSS2DObject(div); scene.add(tag);
+      tag = new CSS2DObject(div); scene.add(tag); tagShown[pair] = tag;
     }
     // between two agents (not via Jarvis), leave a thread that stays lit for a while
     if (a.kind === "agent" && b.kind === "agent") {
@@ -1068,7 +1283,7 @@ export function createScene(container, hooks) {
         const at = curve.getPoint(e);
         p.position.copy(at); history.unshift(at.clone()); history.length = Math.min(history.length, 30);
         trail.forEach((s, i) => s.position.copy(history[Math.min(history.length - 1, i * 3)]));
-        if (tag) tag.position.copy(at).setY(at.y + .7);
+        if (tag) { const over = curve.getPoint(.35 + .3 * e); tag.position.copy(over).setY(over.y + 1.1); }
         return true;
       }
       if (!arrived) {
@@ -1080,9 +1295,34 @@ export function createScene(container, hooks) {
       if (tag) tag.element.style.opacity = fade;
       if (fade > 0) return true;
       for (const m of [core, halo]) { scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
-      if (tag) scene.remove(tag);
+      if (tag) { scene.remove(tag); if (tagShown[pair] === tag) delete tagShown[pair]; }
       return false;
     });
+  }
+
+  // ---- labels never sit on top of each other: the one further back (higher on screen) moves up out of the way,
+  // and message texts give way to names. Measured a few times a second, applied every frame.
+  const lift = new Map();
+  let declutterAt = 0;
+  function declutter(now) {
+    const names = Object.values(nodes).map(n => n.label.element).filter(e => e.isConnected);
+    const said = [...labels.domElement.querySelectorAll(".msg3d")];
+    if (now > declutterAt) {
+      declutterAt = now + 150;
+      const box = e => { const r = e.getBoundingClientRect(); return { e, l: r.left, r: r.right, t: r.top, b: r.bottom }; };
+      const order = [...names.map(box).sort((a, b) => b.b - a.b), ...said.map(box)];   // nearest names keep their place
+      const placed = [], ceiling = container.getBoundingClientRect().top + 46;   // never up under the roster
+      for (const it of order) {
+        let shift = 0;
+        for (let tries = 0; tries < 8; tries++) {
+          const hit = placed.find(p => it.l < p.r - 2 && it.r > p.l + 2 && it.t - shift < p.b && it.b - shift > p.t);
+          if (!hit) break;
+          shift = Math.max(0, Math.min(140, it.b - hit.t + 3, it.t - ceiling));
+        }
+        lift.set(it.e, shift); placed.push({ ...it, t: it.t - shift, b: it.b - shift });
+      }
+    }
+    for (const e of [...names, ...said]) { const s = lift.get(e); if (s) e.style.transform += ` translateY(${-s}px)`; }
   }
 
   // ---- the loop ----
@@ -1138,7 +1378,7 @@ export function createScene(container, hooks) {
     } else {
       scene.traverse(o => { if (o.userData.drift) o.rotation.y += dt * .02; });
     }
-    theme.tick?.(scene, t, dt);
+    theme.tick?.(scene, t, dt, fx);
     for (const link of Object.values(links)) {   // a line to Jarvis flares while a message travels it
       if (link.userData.path || link.userData.flash === undefined) continue;
       const base = (link.userData.base ??= link.material.opacity), k = Math.max(0, 1 - (now - link.userData.flash) / 1500);
@@ -1155,6 +1395,7 @@ export function createScene(container, hooks) {
     for (const id of Object.keys(links)) if (pos[id]) placeLink(id, pos.jarvis, pos[id]);
     composer ? composer.render() : renderer.render(scene, camera);
     labels.render(scene, camera);
+    declutter(now);
     requestAnimationFrame(frame);
   }
 
@@ -1164,9 +1405,10 @@ export function createScene(container, hooks) {
     camera.aspect = w / h; camera.updateProjectionMatrix();
     composer?.setSize(w, h);
     // back the starting view off in narrow windows so the whole team still fits
-    const [pos, target] = homeBase, far = Math.min(1.8, Math.max(1, 1.75 / camera.aspect));
+    const [pos, target] = homeBase, far = Math.min(1.8, Math.max(1, 1.75 / camera.aspect)) * fit;
     HOME.target.set(...target);
     HOME.pos.set(...pos).sub(HOME.target).multiplyScalar(far).add(HOME.target);
+    if (camera.aspect < 1) HOME.pos.y += (1 - camera.aspect) * 14;   // tall, narrow screens: look down more, so rows spread out
   }
   new ResizeObserver(resize).observe(container);
 
