@@ -33,6 +33,7 @@ SESSION_DAYS = 30
 MAX_FAILURES = 5          # wrong passwords allowed per FAILURE_WINDOW_S from one address before it's paused
 MAX_ALL_FAILURES = 30     # from everywhere together; past that the password pauses for everyone (the /dashboard link
 FAILURE_WINDOW_S = 15 * 60  # from Telegram still works, so you're never locked out)
+MAX_UPLOAD_BYTES = 50_000_000  # biggest file the dashboard takes
 
 
 def _token() -> str:
@@ -328,6 +329,45 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             events.unsubscribe(listener)
 
+    def _upload(self) -> None:
+        """A file attached in the command box (or an agent's message box): saved where files from the phone go.
+        The body is the raw file; its name comes in the X-File-Name header (URL-encoded). Only as
+        application/octet-stream, which other websites can't send here without the browser asking first."""
+        from telegram_bot import incoming_path
+
+        if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/octet-stream":
+            self._json({"error": "send the file as application/octet-stream"}, 415)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            self._json({"error": "missing Content-Length"}, 411)
+            return
+        if length < 0 or length > MAX_UPLOAD_BYTES:
+            self.close_connection = True  # don't read it
+            self._json({"error": f"files can be up to {MAX_UPLOAD_BYTES // 1_000_000} MB"}, 413)
+            return
+        name = urllib.parse.unquote(self.headers.get("X-File-Name", "")) or "file"
+        path = incoming_path(name)
+        left = length
+        try:
+            with open(path, "wb") as f:
+                while left > 0:
+                    chunk = self.rfile.read(min(left, 1 << 20))
+                    if not chunk:
+                        raise ConnectionError("the upload stopped part-way")
+                    f.write(chunk)
+                    left -= len(chunk)
+        except (OSError, ConnectionError) as e:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            self._json({"error": f"couldn't save it: {e}"}, 500)
+            return
+        events.emit("jarvis", direction="in", text=f"📎 {os.path.basename(path)} ({length / 1_000_000:.1f} MB)")
+        self._json({"path": path, "name": os.path.basename(path), "size": length})
+
     def do_POST(self):
         if PASSWORD and self._host_ok() and urllib.parse.urlparse(self.path).path == "/login":
             self._login()
@@ -340,6 +380,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Location", "/")
             self.send_header("Content-Length", "0")
             self.end_headers()
+            return
+        if self._authorized() and urllib.parse.urlparse(self.path).path == "/upload":
+            self._upload()
             return
         if not self._authorized() or (not self.headers.get("Content-Type", "").startswith("application/json")):
             self._send(403, b"", "text/plain")

@@ -53,7 +53,27 @@
   .item.res { border-left-color: var(--good); } .item.you { border-left-color: var(--you); }
   .item.jar { border-left-color: var(--accent); background: var(--item-jarvis-bg); } .item.warn { border-left-color: var(--bad); }
   .item .more { color: var(--accent); font-size: 12px; text-decoration: none; }
-  footer { display: flex; gap: 10px; padding: 12px 20px; border-top: var(--border); background: var(--footer-bg); }
+  footer { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 20px; border-top: var(--border); background: var(--footer-bg); }
+  /* attaching files to a command (or to a message for an agent) */
+  .attach { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 42px; cursor: pointer; font-size: 18px;
+            background: var(--input-bg); border: var(--input-border); border-radius: var(--radius); color: var(--input-text); }
+  .attach:hover { box-shadow: 0 0 0 3px var(--focus); }
+  .attach:focus-within { box-shadow: 0 0 0 3px var(--focus); }
+  .chips-row { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips-row:empty { display: none; }
+  .file-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 4px 3px 10px; border-radius: var(--chip-radius);
+               background: var(--chip-bg); border: var(--chip-border); color: var(--text); font-size: 12.5px; }
+  .file-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .file-chip i { color: var(--muted); font-style: normal; font-size: 11.5px; white-space: nowrap; }
+  .file-chip button { padding: 0 6px; font-size: 14px; line-height: 1; background: none; border: none; box-shadow: none; color: var(--muted); }
+  .file-chip button:hover { color: var(--bad); }
+  .file-chip.err { border-color: var(--bad); color: var(--bad); }
+  #drawer .chips-row { margin-top: 8px; }
+  #drawer .attach { width: 38px; }
+  #dropzone { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; background: #0008; pointer-events: none; }
+  #dropzone div { padding: 22px 32px; border-radius: var(--radius-lg); border: 3px dashed var(--accent); background: var(--drawer-bg);
+                  color: var(--drawer-text); font-weight: 700; font-size: 16px; }
+  body.dragging #dropzone { display: grid; }
   input[type=text] { flex: 1; background: var(--input-bg); border: var(--input-border); border-radius: var(--radius); color: var(--input-text);
                      padding: 10px 14px; font: inherit; outline: none; }
   input[type=text]:focus { box-shadow: 0 0 0 3px var(--focus); }
@@ -551,9 +571,12 @@
   </aside>
 </main>
 <footer>
+  <div class="chips-row" id="cmd-files"></div>
+  <label class="attach" title="Attach files (or drop them on the page, or paste an image)"><input type="file" id="cmd-pick" multiple hidden><span class="emoji">📎</span></label>
   <input type="text" id="cmd" autocomplete="off">
   <button id="send">Send</button>
 </footer>
+<div id="dropzone"><div>Drop files to send them to Jarvis</div></div>
 <div id="tip"></div>
 <div id="ctx"></div>
 <script>
@@ -1193,11 +1216,14 @@ function openDrawer(id) {
       <div id="d-result"></div>
       <div class="section">RECENT STEPS</div><div class="steps" id="d-steps"></div>
       <div id="d-controls">
-        <div class="row"><input type="text" id="dm" placeholder="Message ${esc(info.name)}..."><button onclick="sendDM()">Send</button></div>
+        <div class="chips-row" id="dm-files"></div>
+        <div class="row"><label class="attach" title="Attach files for ${esc(info.name)}"><input type="file" id="dm-pick" multiple hidden><span class="emoji">📎</span></label>
+          <input type="text" id="dm" placeholder="Message ${esc(info.name)}..."><button onclick="sendDM()">Send</button></div>
         <div class="row"><button class="danger" onclick="stopAgent()">Stop ${esc(info.name)}</button></div>
       </div>`;
     drawer.classList.add("open");
     document.getElementById("dm").addEventListener("keydown", e => { if (e.key === "Enter") sendDM(); });
+    dmFiles.mount(document.getElementById("dm-files"), document.getElementById("dm-pick"), document.getElementById("dm"));
     refilter(); renderRoster();
   }
   refreshDrawer();
@@ -1217,10 +1243,14 @@ function closeDrawer() {
   selected = null; document.getElementById("drawer").classList.remove("open");
   refilter(); renderRoster();
 }
-function sendDM() {
-  const input = document.getElementById("dm"); const text = input.value.trim(); if (!text) return;
-  api("/message", { agent: selected, text });  // it shows up in the feed when Jarvis delivers it
+async function sendDM() {
+  const input = document.getElementById("dm"), text = input.value.trim(), agent = selected;
+  if (!text && !dmFiles.count()) return;
   input.value = "";
+  const saved = await dmFiles.upload(() => { input.value = text; });
+  if (saved === null) return;
+  const notes = saved.map(f => `[The user sent a file on the dashboard, saved at ${f.path}. Open it with view_file.]`);
+  api("/message", { agent, text: [...notes, text].filter(Boolean).join("\n") });  // shows in the feed once delivered
 }
 function stopAgent() { api("/stop", { agent: selected }); }
 function approvalCard(e) {
@@ -1314,8 +1344,86 @@ fetch(`/state?token=${encodeURIComponent(TOKEN)}`).then(r => r.json()).then(stat
   try { want3D = localStorage.getItem("jarvis-3d") !== "0"; } catch (e) {}
   if (want3D) start3D();
 });
+// ---------- attached files ----------
+// Files picked, dropped or pasted wait as chips until Send, then go to /upload (saved in Downloads\\From phone, like
+// files sent from Telegram) and the message says where they are.
+const MAX_UPLOAD = 50e6;
+function fileSize(n) { return n >= 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB"; }
+function attacher() {
+  let files = [], box = null, input = null;
+  const self = {
+    count: () => files.length,
+    mount(el, picker, text) {   // (again for each agent's drawer: what was attached for another agent is dropped)
+      files = []; box = el; self.render();
+      picker.onchange = () => { self.add(picker.files); picker.value = ""; };
+      text.addEventListener("paste", e => { if (e.clipboardData?.files?.length) { e.preventDefault(); self.add(e.clipboardData.files); } });
+      input = text;
+    },
+    add(list) {
+      for (const f of list) files.push({ file: f, error: f.size > MAX_UPLOAD ? `too big (max ${MAX_UPLOAD / 1e6} MB)` : "" });
+      self.render(); input?.focus();
+    },
+    render() {
+      if (!box) return;
+      box.innerHTML = files.map((f, i) => `<span class="file-chip${f.error ? " err" : ""}" title="${esc(f.error || f.file.name)}">
+        <span class="emoji">${/^image\//.test(f.file.type) ? "🖼️" : /^video\//.test(f.file.type) ? "🎞️" : "📄"}</span><span>${esc(f.file.name)}</span>
+        <i>${esc(f.error || fileSize(f.file.size))}</i><button data-i="${i}" title="Remove">×</button></span>`).join("");
+      box.querySelectorAll("button").forEach(b => b.onclick = () => { files.splice(+b.dataset.i, 1); self.render(); });
+    },
+    // Upload everything; the saved files ([{path, name}]), or null if one failed (they stay attached to try again;
+    // ones already uploaded aren't sent twice).
+    async upload(putBack) {
+      if (files.some(f => f.file.size > MAX_UPLOAD)) { putBack(); return null; }
+      const sending = files; files = []; self.render();
+      for (const f of sending) {
+        if (f.saved) continue;
+        try {
+          const r = await fetch("/upload", { method: "POST", body: f.file, headers: { "Content-Type": "application/octet-stream",
+            "X-Jarvis-Token": TOKEN, "X-File-Name": encodeURIComponent(f.file.name) } });
+          const answer = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(answer.error || `error ${r.status}`);
+          f.saved = answer; f.error = "";
+        } catch (e) {
+          f.error = "not sent: " + e.message;
+          files = sending; self.render(); putBack(); return null;
+        }
+      }
+      return sending.map(f => f.saved);
+    },
+  };
+  return self;
+}
+const cmdFiles = attacher(), dmFiles = attacher();
 const cmd = document.getElementById("cmd");
-function sendCommand() { const text = cmd.value.trim(); if (!text) return; api("/command", { text }); cmd.value = ""; }
+cmdFiles.mount(document.getElementById("cmd-files"), document.getElementById("cmd-pick"), cmd);
+async function sendCommand() {
+  const text = cmd.value.trim();
+  if (!text && !cmdFiles.count()) return;
+  cmd.value = "";
+  const sendBtn = document.getElementById("send");
+  sendBtn.disabled = true;
+  const saved = await cmdFiles.upload(() => { cmd.value = text; });
+  sendBtn.disabled = false;
+  if (saved === null) return;
+  let note = "";
+  if (saved.length) {
+    note = `\n[The user attached ${saved.length === 1 ? "a file" : saved.length + " files"} in the dashboard, saved at: ` +
+           saved.map(f => f.path).join("; ") + "]";
+  }
+  api("/command", { text: (text || (saved.length > 1 ? "I've attached some files." : "I've attached a file.")) + note });
+}
+// drop files anywhere: into the agent's drawer if it's open and they land on it, otherwise for Jarvis
+let dragDepth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+document.addEventListener("dragenter", e => { if (hasFiles(e)) { dragDepth++; document.body.classList.add("dragging"); } });
+document.addEventListener("dragleave", e => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
+document.addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+document.addEventListener("drop", e => {
+  if (!hasFiles(e)) return;
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+  const intoDrawer = e.target.closest?.("#drawer.open") && document.getElementById("dm-files");
+  (intoDrawer ? dmFiles : cmdFiles).add(e.dataTransfer.files);
+});
 document.getElementById("send").onclick = sendCommand;
 cmd.addEventListener("keydown", e => { if (e.key === "Enter") sendCommand(); });
 window.addEventListener("resize", render);
