@@ -3,6 +3,11 @@
   "done": [
     {
       "date": "2026-10-19",
+      "title": "Chef agent",
+      "detail": "Suggests breakfast, lunch and dinner every morning at 7:30 and writes full recipes, saving each to your cookbook. Remembers your allergies, restrictions, likes and dislikes and how each recipe went, so it gets more tailored over time. Recipes with an ingredient you're allergic to are blocked."
+    },
+    {
+      "date": "2026-10-19",
       "title": "Morning report and the Changes tab",
       "detail": "This list on the dashboard, a 9am report in the feed when something's new, and scheduled setup jobs Jarvis runs on his own (like today's 11am add-on install)."
     },
@@ -125,7 +130,7 @@
     {
       "when": "",
       "title": "Your to-dos",
-      "detail": "A free Alpha Vantage key in .env (ALPHAVANTAGE_API_KEY). A read-only GitHub token (setup_addons.py asks for it). Google connectors at claude.ai > Settings > Connectors. Gmail app password and TradeLog settings. code_repos.json and GITHUB_TOKEN for the coders. Set the PC's sleep to Never so it's always reachable.",
+      "detail": "Tell the Chef your allergies, restrictions and favourite foods (it'll ask). A free Alpha Vantage key in .env (ALPHAVANTAGE_API_KEY). A read-only GitHub token (setup_addons.py asks for it). Google connectors at claude.ai > Settings > Connectors. Gmail app password and TradeLog settings. code_repos.json and GITHUB_TOKEN for the coders. Set the PC's sleep to Never so it's always reachable.",
       "who": "You"
     },
     {

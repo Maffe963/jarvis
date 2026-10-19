@@ -125,6 +125,11 @@ Analyst I'm taking Friday off").
 - **Video Editor** makes TikToks and Reels from your footage: a strong hook, fast cuts, bold captions in the safe
   zone, captions and hashtags to post with. For bigger jobs (several clips from one long video) it splits the work
   between up to 3 helpers that cut at the same time, then checks and hands you all of them.
+- **Chef** plans your breakfast, lunch and dinner. Each morning at 7:30 it suggests three meals: some favourites,
+  some new ideas. It writes recipes with exact amounts and steps, and saves every one to your cookbook. It remembers
+  your allergies and restrictions, the foods and ingredients you like and hate, and how each recipe went, so its
+  ideas get more tailored over time. It refuses to save a recipe with an ingredient you're allergic to, and flags
+  saved recipes if you add an allergy later. It can add ingredients to your grocery list.
 
 Specialists only ping you when something needs you: a question, a Yes/No approval, a finished result, or a scheduled
 report with something worth telling you (a check that finds nothing stays silent). Everything else (agents talking
