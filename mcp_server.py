@@ -10,6 +10,7 @@ import urllib.request
 
 BRIDGE_URL = os.environ["JARVIS_BRIDGE_URL"]
 TOKEN = os.environ["JARVIS_BRIDGE_TOKEN"]
+TIMEOUT = float(os.environ.get("JARVIS_TOOL_TIMEOUT", "10800"))
 
 
 def bridge(path: str, body: dict | None = None):
@@ -18,8 +19,8 @@ def bridge(path: str, body: dict | None = None):
         data=json.dumps(body).encode("utf-8") if body is not None else None,
         headers={"X-Jarvis-Token": TOKEN, "Content-Type": "application/json"},
     )
-    # Generous timeout: a call may be waiting on the user to answer a confirmation.
-    with urllib.request.urlopen(req, timeout=300) as resp:
+    # Generous timeout: a call may be waiting on the user to answer a confirmation, running tests or rendering a video.
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
         return json.loads(resp.read())
 
 
