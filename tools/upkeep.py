@@ -51,7 +51,8 @@ def _save(state: dict) -> None:
 
 
 def _job_id(item: dict) -> str:
-    return f"{item.get('when', '')} {item.get('title', '')}"
+    """A job's own "id" (so fixing a typo in its title doesn't run it again), else its time and title."""
+    return str(item.get("id") or f"{item.get('when', '')} {item.get('title', '')}")
 
 
 def _when(item: dict) -> datetime | None:
@@ -86,16 +87,21 @@ def _fingerprint(data: dict) -> str:
     return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:16]
 
 
-def report_text(data: dict, since: list[str]) -> str:
-    new = [d for d in data.get("done", []) if d.get("title") not in since]
+def report_text(data: dict, since: list[str] | None, first: bool = False) -> str:
+    new = [d for d in data.get("done", []) if d.get("title") not in (since or [])]
     lines = ["📋 Morning report: what's changed in Jarvis and what's planned."]
-    if new:
+    if first:  # the first one: the latest few, not the whole history
+        recent = data.get("done", [])[:5]
+        lines.append(f"{len(data.get('done', []))} changes so far; the latest: " + "; ".join(d["title"] for d in recent) + ".")
+    elif new:
         lines.append("New: " + "; ".join(d["title"] for d in new[:6]) + (f"; and {len(new) - 6} more" if len(new) > 6 else "") + ".")
     upcoming = []
     for item in data.get("planned", []):
         when = _when(item)
-        if when is None:
-            continue  # to-dos and things on hold: in the Changes tab
+        if when is None or (item.get("run") and _job_id(item) in _state().get("jobs", {})):
+            continue  # to-dos, things on hold and jobs already run: in the Changes tab
+        if when.date() < datetime.now().date():
+            continue  # past dates nobody has moved yet
         label = when.strftime("%a %I:%M %p").replace(" 0", " ") if when.hour or when.minute else when.strftime("%a %b %d")
         upcoming.append(f"{item.get('title', '')} ({label})")
     if upcoming:
@@ -120,7 +126,7 @@ def _morning(post, now: datetime) -> None:
                            "titles": [d.get("title") for d in data.get("done", [])]}
         _save(state)
     if data and fingerprint != report.get("fingerprint"):  # only when something changed since the last one
-        post(report_text(data, report.get("titles", [])))
+        post(report_text(data, report.get("titles"), first=not report))
 
 
 # ---------- scheduled setup jobs ----------
@@ -131,13 +137,20 @@ def _addons() -> tuple[bool, str]:
         return False, "setup_addons.py isn't here yet (its update hasn't been merged on GitHub)"
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     python = sys.executable.replace("pythonw.exe", "python.exe")
-    result = subprocess.run([python, script, "--unattended"], cwd=ROOT, capture_output=True, text=True,
-                            encoding="utf-8", errors="replace", timeout=1800, creationflags=flags)
+    try:
+        result = subprocess.run([python, script, "--unattended"], cwd=ROOT, capture_output=True, text=True,
+                                encoding="utf-8", errors="replace", timeout=1800, creationflags=flags,
+                                env={**os.environ, "PYTHONUTF8": "1"})
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f"the add-on setup didn't finish ({e})"
     summary = next((line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")), "")
     if not summary:
         tail = (result.stdout + result.stderr).strip().splitlines()[-3:]
         return False, "the add-on setup didn't finish: " + " / ".join(tail)
-    outcome = json.loads(summary)
+    try:
+        outcome = json.loads(summary)
+    except ValueError:
+        return False, "the add-on setup's summary was unreadable"
     text = f"{len(outcome['done'])} setup steps done (skills, plugins, status line, hooks)"
     if outcome["todo"]:
         text += ". Left for you: " + "; ".join(outcome["todo"])
@@ -155,8 +168,10 @@ def _run(item: dict) -> tuple[str, str, bool]:
         if step == "update":
             try:
                 new, note = updater.pull()
+            except updater.UpdateProblem as e:  # local changes need the user; a network blip just needs time
+                return ("waiting" if e.retry else "failed"), f"couldn't update: {e}", restart
             except Exception as e:
-                return "failed", f"couldn't update: {e}", False
+                return "waiting", f"couldn't update: {e}", restart
             restart = restart or bool(new)
             notes.append(f"installed {len(new)} update(s){note}" if new else "already up to date")
         elif step == "addons":
@@ -184,7 +199,10 @@ def _jobs(post, now: datetime) -> None:
                 state["jobs"][key] = {"status": "skipped", "detail": "missed while the PC was off; run it yourself"}
                 _save(state)
                 continue
-        status, detail, restart = _run(item)
+        try:
+            status, detail, restart = _run(item)
+        except Exception as e:  # never let one job break the loop or run again every minute
+            status, detail, restart = "waiting", f"something went wrong: {e}", False
         with _lock:
             state = _state()
             state.setdefault("jobs", {})[key] = {"status": status, "detail": detail, "tried": time.time(),
@@ -221,8 +239,9 @@ def _post(text: str, phone: bool = False) -> None:
 _started = False
 
 
-def start() -> None:
-    """Every minute: the morning report when it's due, and any setup job that's due."""
+def start(busy=lambda: False) -> None:
+    """Every minute: the morning report when it's due, and any setup job that's due (only while `busy()` is false,
+    so a job's restart never lands in the middle of a request)."""
     global _started
     if _started:
         return
@@ -232,7 +251,7 @@ def start() -> None:
         time.sleep(20)  # let Jarvis finish starting
         while True:
             now = datetime.now()
-            for task in (_jobs, _morning):
+            for task in (_morning,) if busy() else (_jobs, _morning):
                 try:
                     task(_post, now)
                 except Exception as e:

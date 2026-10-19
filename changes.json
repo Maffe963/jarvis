@@ -106,7 +106,8 @@
       "run": [
         "update",
         "addons"
-      ]
+      ],
+      "id": "addons-install-2026-10-19"
     },
     {
       "when": "2026-10-19T11:30",

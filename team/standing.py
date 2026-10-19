@@ -621,6 +621,11 @@ def _alpha_vantage(**params) -> dict:
     if "Error Message" in data:
         raise RuntimeError(f"Alpha Vantage: {data['Error Message']}")
     with _lock:
+        try:  # read again: another agent may have saved answers while this one was fetching
+            with open(MARKET_CACHE_FILE, "r", encoding="utf-8") as f:
+                cache = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            cache = {}
         cache = {k: v for k, v in cache.items() if time.time() - v["t"] < MARKET_CACHE_S}
         cache[cache_key] = {"t": time.time(), "data": data}
         _write(MARKET_CACHE_FILE, json.dumps(cache))

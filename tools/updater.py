@@ -70,32 +70,45 @@ def check_for_updates() -> str:
             + (f"\nBut: {problem}" if problem else "\nSay 'update yourself' to install them."))
 
 
+class UpdateProblem(RuntimeError):
+    """Why an update can't be installed right now (GitHub unreachable, local changes, ...); nothing was changed."""
+
+    def __init__(self, message: str, retry: bool = False) -> None:
+        super().__init__(message)
+        self.retry = retry  # worth trying again later by itself (e.g. GitHub was unreachable)
+
+
 def pull() -> tuple[list[str], str]:
     """Install what's new on GitHub without restarting: (the new commits' subjects, a note about packages).
-    Raises RuntimeError when it can't, leaving everything as it was."""
+    Raises UpdateProblem when it can't, leaving everything as it was."""
     new, problem = _pending()
     if problem:
-        raise RuntimeError(problem)
+        raise UpdateProblem(problem, retry=problem.startswith("Couldn't reach"))
     if not new:
         return [], ""
     before = _git("rev-parse", "HEAD").stdout.strip()
     result = _git("pull", "--ff-only", "--quiet", timeout=120)
     if result.returncode != 0:
-        raise RuntimeError(f"The update failed, nothing changed: {result.stderr.strip()[:300]}")
+        raise UpdateProblem(f"The update failed, nothing changed: {result.stderr.strip()[:300]}", retry=True)
     changed = _git("diff", "--name-only", before, "HEAD").stdout.split()
     note = ""
     if "requirements.txt" in changed:
-        pip = subprocess.run([PYTHON, "-m", "pip", "install", "-q", "-r", "requirements.txt"], cwd=ROOT,
-                             capture_output=True, text=True, timeout=900, creationflags=subprocess.CREATE_NO_WINDOW)
-        note = " New packages installed." if pip.returncode == 0 else f" (Installing new packages failed: {pip.stderr[-200:]})"
+        try:
+            pip = subprocess.run([PYTHON, "-m", "pip", "install", "-q", "-r", "requirements.txt"], cwd=ROOT,
+                                 capture_output=True, text=True, timeout=900, creationflags=subprocess.CREATE_NO_WINDOW)
+            note = " New packages installed." if pip.returncode == 0 else f" (Installing new packages failed: {pip.stderr[-200:]})"
+        except (OSError, subprocess.TimeoutExpired) as e:  # the code is updated either way
+            note = f" (Installing new packages failed: {e})"
     return new, note
 
 
 def update_jarvis() -> str:
     try:
         new, note = pull()
+    except UpdateProblem as e:
+        return str(e)
     except Exception as e:
-        return str(e) if isinstance(e, RuntimeError) else f"Couldn't update: {e}"
+        return f"Couldn't update: {e}"
     if not new:
         return "Already up to date; nothing to install."
     changes = "\n".join(f"• {subject}" for subject in new[:10]) + (f"\n• and {len(new) - 10} more" if len(new) > 10 else "")
