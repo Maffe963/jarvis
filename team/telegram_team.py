@@ -221,22 +221,27 @@ class TeamBot:
             return
         if kind == "agent":
             thread = self._make_topic(e["agent"], e["name"], e["role"])
+            again = False
             if e.get("kind") == "standing":
                 welcomed = self.state.setdefault("welcomed", [])
-                if e["name"] in welcomed:  # a specialist back after a restart: no second welcome
-                    return
-                welcomed.append(e["name"])
-                self._save()
+                again = e["name"] in welcomed
+                if not again:
+                    welcomed.append(e["name"])
+                    self._save()
                 self.post(f"⭐ {e['name']} is on your team for good: {e['role']}.\n\nWrite here any time to talk "
                           "to it. It keeps notes on what it learns, and its scheduled reports show up here.", thread, quiet=True)
             else:
                 self.post(f"📋 {e['name']} ({e['role']}) is on it.\n\nTask:\n{e['task']}\n\n"
                           "Write here to talk to it.", thread, quiet=True)
-            self.post(f"🆕 {e['name']} joined the team: {e['role']}", self._all_topic(), quiet=True)
+            if not (e.get("kind") == "standing" and again):  # a specialist that was here before isn't news
+                self.post(f"🆕 {e['name']} joined the team: {e['role']}", self._all_topic(), quiet=True)
         elif kind == "message":
             sender, to, text = e["sender"], e["to"], e["text"]
             if e.get("kind") == "update":
-                if self._topic(sender):
+                helper = agents.find(sender)
+                if helper is not None and helper.parent:
+                    self.post(f"🧩 {helper.name}: {text}", self._topic(sender), quiet=True)
+                elif self._topic(sender):
                     self.post(f"💭 {text}", self._topic(sender))
                 return
             if to == "user":
@@ -496,7 +501,7 @@ class DirectMessages:
         while True:
             e = listener.get()
             agent = agents.find(e.get("agent") or e.get("sender") or "")
-            if agent is None:
+            if agent is None or agent.parent:  # a helper reports to its specialist, not to the user
                 continue
             if e["type"] == "message" and e["to"] == "user":
                 text = f"❓ {agent.name} asks: {e['text']}\n\n(Answer through Jarvis or the dashboard.)"

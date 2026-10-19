@@ -116,6 +116,9 @@ def respond(history: list[dict], user_text: str, confirm, say, history_file: str
         try:
             result = _respond(history, user_text, confirm, said, history_file, on_text)
             return result
+        except Exception as e:
+            show("out", f"Something went wrong: {e}")
+            raise
         finally:
             if result is not None:
                 show("out", "Stopped." if result[1] is None else result[1])

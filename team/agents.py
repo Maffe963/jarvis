@@ -187,6 +187,10 @@ class Agent:
 
         def ask_user(inputs: dict) -> str:
             question = inputs.get("question", "")
+            if self.parent:  # the user talks to the specialist, which answers for its helpers
+                deliver(self.id, self.parent, f"Question from your helper {self.name}: {question}")
+                return (f"Your question went to {self.parent}, who'll answer (asking the user if needed). End your "
+                        "turn now; the answer comes back as a message.")
             self.set_status("needs you", question)
             message = messages.add(self.name, self.id, "user", "user", question, kind="question")
             events.emit("message", sender=self.id, to="user", text=question, msg=message["id"])
@@ -303,6 +307,19 @@ class Agent:
 
     # ----- running -----
 
+    def _helping(self) -> bool:
+        """A helper whose specialist is still on the team, or with its own renders or transcripts running: more
+        will come (the specialist's reply, or a job's result), so it isn't left alone."""
+        if not self.parent:
+            return False
+        from team import video
+
+        with video._jobs_lock:
+            if any(j["agent"] == self.name and j["status"] == "running" for j in video._jobs.values()):
+                return True
+        parent = find(self.parent)
+        return parent is not None and parent.status not in FINISHED
+
     def _wait_for_message(self, last_reply: str) -> str | None:
         """The next message, or None if it's time to stop: idle for hours, or left waiting after everyone else on
         the team has finished (nobody is going to message it), unless it's waiting on the user."""
@@ -313,7 +330,7 @@ class Agent:
                 return message
             waited += 5
             others = [a for a in active() if a is not self and a.kind != "standing"]  # those never finish
-            if others or self.status == "needs you":
+            if others or self.status == "needs you" or self._helping():
                 alone_since = None
             else:
                 alone_since = alone_since if alone_since is not None else waited
@@ -340,6 +357,8 @@ class Agent:
         team = ", ".join(f"{a.name} ({a.role})" for a in active() if a is not self) or "none yet"
         prompt = PROMPT.format(name=self.name, role=self.role, team=team)
         allowed = REVIEWER_TOOLS if self.kind == "reviewer" else background.ALLOWED
+        if self.parent:  # never more than its specialist may use
+            allowed = set(standing.definition(self.parent).get("tools", [])) & background.ALLOWED
         if self.kind == "coder" and self.workspace:
             prompt += CODER_GUIDE.format(**self.workspace)
             allowed = {"web_search"}  # everything else it does goes through its workspace's tools
@@ -454,7 +473,9 @@ def _run_standing(agent: "Agent", resumed: bool) -> None:
                 return
             reply = f"(That job failed: {e})"
             agent.history.append({"role": "assistant", "content": reply})
-        message = None
+        asked, message = (message or "").startswith("Message from the user"), None
+        if reply.strip().startswith(QUIET) and asked:
+            reply = "Nothing new to report right now."  # the user asked: they get an answer, even an empty one
         if reply.strip() and not reply.strip().startswith(QUIET):
             logged = messages.add(agent.name, agent.id, "Jarvis", "jarvis", reply, kind="update")
             events.emit("message", sender=agent.id, to="jarvis", text=reply.strip()[:3500], kind="update",
