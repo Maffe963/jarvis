@@ -67,7 +67,8 @@ def _run(task: dict) -> None:
     phone = _phone()
     confirm = (lambda q: phone._ask(f"(Background task \"{task['title']}\") {q}")) if phone else (lambda q: False)
     try:
-        report = brain.run_background(task["task"], PROMPT, ALLOWED, task["cancelled"], confirm, task["log"])
+        report = brain.run_background(task["task"], PROMPT, ALLOWED, task["cancelled"], confirm, task["log"],
+                                      label=f"Background: {task['title']}")
         task["status"], task["result"] = "done", report
     except brain.TaskInterrupted:
         task["status"], task["result"] = "cancelled", "Cancelled before it finished."

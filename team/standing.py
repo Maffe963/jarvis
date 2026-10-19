@@ -819,6 +819,27 @@ def _due_jobs(now: datetime) -> list[tuple[str, str]]:
     return due
 
 
+def next_runs(now: datetime | None = None, days: int = 8) -> list[dict]:
+    """The standing agents' upcoming scheduled jobs, soonest first: [{"agent", "when", "task"}]."""
+    now = now or datetime.now()
+    upcoming = []
+    for name, spec in definitions().items():
+        for job in spec.get("schedule", []):
+            for at in job.get("times") or [job.get("time", "")]:
+                try:
+                    hour, minute = (int(x) for x in at.split(":"))
+                except ValueError:
+                    continue
+                for ahead in range(days):
+                    day = now.date() + timedelta(days=ahead)
+                    when = datetime(day.year, day.month, day.day, hour, minute)
+                    if when > now and _runs_on(job.get("days", "daily"), day.weekday()):
+                        upcoming.append({"agent": name, "when": when.isoformat(timespec="minutes"),
+                                         "task": job.get("task", "")})
+                        break
+    return sorted(upcoming, key=lambda j: j["when"])
+
+
 def scheduler(put) -> None:
     """In the background: every 30 seconds, hand due jobs to their agents (`put(name, text)`)."""
     def loop():

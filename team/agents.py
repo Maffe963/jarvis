@@ -144,8 +144,10 @@ class Agent:
         self.session = None
 
     def info(self) -> dict:
+        ws = self.workspace or {}
         return {"id": self.id, "name": self.name, "role": self.role, "task": self.task, "status": self.status,
-                "steps": len(self.log), "result": self.result, "started": self.started, "kind": self.kind}
+                "steps": len(self.log), "result": self.result, "started": self.started, "kind": self.kind,
+                "repo": ws.get("repo", ""), "branch": ws.get("branch", ""), "doing": self.log[-1][:160] if self.log else ""}
 
     def saved(self) -> dict:
         return {**self.info(), "inbox": list(self.inbox), "history": list(self.history), "log": list(self.log),
@@ -321,7 +323,8 @@ class Agent:
         if self.kind == "coder" and self.workspace:
             prompt += CODER_GUIDE.format(**self.workspace)
             allowed = {"web_search"}  # everything else it does goes through its workspace's tools
-        self.session = brain.ClaudeCodeSession(prompt, allowed, self.cancelled, self.log, self._tools())
+        self.session = brain.ClaudeCodeSession(prompt, allowed, self.cancelled, self.log, self._tools(),
+                                               label=self.name)
         if not resumed or not self.history:
             message = f"Your task from the user (via Jarvis):\n{self.task}"
         elif self.status in ("starting", "working"):
@@ -390,7 +393,8 @@ def _standing_turn(agent: "Agent", message: str) -> str:
     agent.history.append({"role": "user", "content": message})
     del agent.history[:-STANDING_HISTORY]
     agent.set_status("working", _short(message, 120))
-    session = agent.session = brain.ClaudeCodeSession(prompt, allowed, agent.cancelled, agent.log, agent._tools())
+    session = agent.session = brain.ClaudeCodeSession(prompt, allowed, agent.cancelled, agent.log, agent._tools(),
+                                                     label=agent.name)
     try:
         reply = session.ask(agent.history, lambda q: approvals.ask(q, agent.name, agent.id))
     finally:

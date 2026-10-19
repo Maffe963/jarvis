@@ -135,6 +135,23 @@ Tailscale can reach it, and the link carries a secret key that stays the same ac
 since the dashboard can give Jarvis commands. To change the key, delete `memory/dashboard_token` and restart. The
 dashboard runs while Jarvis is on; when Jarvis is off, use the team's Telegram topics.
 
+**From any browser (a live website):** to open it on a computer that isn't yours, or share nothing but a
+password, set `JARVIS_DASHBOARD_PASSWORD` in `.env` to a long password and run `tailscale funnel --bg 8765` instead
+of `tailscale serve` (Funnel puts the same `https://...ts.net` address on the public internet, with HTTPS). Anyone
+opening the address gets a sign-in page; after 5 wrong passwords sign-in pauses for 15 minutes, and Jarvis tells
+you about wrong tries in the dashboard's feed. Signing in lasts 30 days on that browser (delete
+`memory/dashboard_sessions.json` to sign everyone out). The secret link from `/dashboard` still works without the
+password. Since the dashboard can give Jarvis commands, use a password you don't use anywhere else, or keep to
+`tailscale serve` if you only need your own devices.
+
+**The panel's tabs** (right side, or below the map on a phone; Shift+1-7 switches): **Feed** is the live
+activity log; **Tasks** what each agent is doing right now, background tasks, scheduled jobs and reminders;
+**Sessions** your Claude Code sessions on the PC (active now and recent, with tokens) and Jarvis's own; **Usage**
+your plan's 5-hour and weekly limits, tokens per day and who used them; **Projects** Jarvis, your code repos,
+projects and any folder you've used Claude Code in, with commits, open pull requests, agents and sessions on each;
+**PC** CPU, memory, disk and the busiest processes, with Jarvis's own marked; **Memory** what Jarvis remembers,
+your lists, reminders and each agent's notebook. The chip in the header shows your tightest plan limit.
+
 ## Starting with Windows
 
 ```bash
