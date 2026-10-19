@@ -125,6 +125,12 @@ def call(function: str, **inputs):
         return f"Couldn't reach the agent team: {e}"
 
 
+def _standing_names() -> str:
+    from team import standing
+
+    return ", ".join(f"{name} ({spec.get('role', '')})" for name, spec in standing.definitions().items())
+
+
 def _code_repos() -> list[str]:
     from team import coding
 
@@ -281,7 +287,9 @@ TOOLS = [
                        "merges. Split a big coding job into separate parts (e.g. backend, frontend, tests) with one "
                        "coder each; one coder is enough for a small change. Code repositories: "
                        f"{', '.join(_code_repos()) or 'none set up yet (code_repos.json)'}. "
-                       "Give each a short name and complete standalone instructions.",
+                       "Give each a short name and complete standalone instructions. The user also has standing "
+                       f"specialists who stay on the team for good: {_standing_names() or 'none yet'}. For their "
+                       "subjects, pass the request to them with message_agent instead of creating a new agent.",
         "input_schema": {"type": "object", "properties": {
             "name": {"type": "string", "description": "Short name, e.g. 'Researcher' or 'Backend coder'"},
             "role": {"type": "string", "description": "One line: what this agent is responsible for"},

@@ -98,6 +98,28 @@ a pull request; the Reviewer reads it, runs the checks, comments, and merges it 
 merges the team's own pull requests, never with failing checks or conflicts). Set `JARVIS_AGENT_MERGE=ask` to
 approve each merge from your phone first. From Telegram: `/code repo | task`.
 
+**Standing agents:** specialists that stay on the team for good, defined in `standing_agents.json`. They never
+finish: each message or scheduled job is a new piece of work, and between jobs nothing runs, so they cost nothing
+while idle. Each keeps a notebook (`memory/team/notebooks/`) as its long-term memory, has its own Telegram topic to
+chat in, and doesn't count towards the 5-agent limit. Talk to one in its topic, or through Jarvis ("tell my Trade
+Analyst I'm taking Friday off").
+
+- **Ghostwriter** learns how you write from your sent Gmail and checks your inbox 5 times a day. Each reply it
+  drafts comes to its topic with Send / No buttons and is only sent if you tap Send. Needs Gmail set up.
+- **Trade Analyst** reads your TradeLog trades and journal (read only): a recap after the close on days you
+  traded, and a deeper weekly review on Saturday mornings. Needs the four `TRADELOG_*` settings in `.env`.
+- **Portfolio Advisor** keeps the holdings you tell it about ("I bought 10 NVDA at 120"), gets prices from Stooq,
+  and reviews your portfolio every Sunday at 6 PM.
+- **Real Estate Advisor** helps you plan a Section 8 and Airbnb business on demand, and keeps your plan in its notes.
+- **Job Hunter** learns your resume and what you want, searches every weekday morning (Adzuna, remote boards and
+  your target companies' own job boards), and sends the best new matches. For a job you pick, it writes a tailored
+  cover letter and resume changes into `Documents\Jarvis\Jobs\`; you submit the application. It tracks every
+  application and reminds you to follow up. Optional: a free Adzuna key in `.env` for broader search.
+
+Change instructions or schedules in `standing_agents.json`, then send `/restart team`. Set `"enabled": false` to turn
+one off. `/stop` in an agent's topic pauses it until the team restarts. They give information and analysis, not
+financial, legal or tax advice.
+
 **Reviews:** when an agent writes files or runs commands, a Reviewer agent (started automatically, read-only)
 checks that work for safety, correctness and efficiency before the agent can hand it in, and sends back
 anything to fix; after 3 rounds the open concerns go in the agent's report.

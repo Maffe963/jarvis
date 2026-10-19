@@ -13,7 +13,7 @@ _lock = threading.Lock()
 phone_prompts = True  # also ask through Jarvis's phone bot
 
 
-def ask(question: str, who: str = "jarvis", agent: str = "") -> bool:
+def ask(question: str, who: str = "jarvis", agent: str = "", timeout: float = TIMEOUT_S) -> bool:
     approval_id = uuid.uuid4().hex[:8]
     done, answer = threading.Event(), []
     with _lock:
@@ -22,7 +22,7 @@ def ask(question: str, who: str = "jarvis", agent: str = "") -> bool:
     phone = _phone() if phone_prompts else None
     if phone:
         threading.Thread(target=lambda: decide(approval_id, phone._ask(f"({who}) {question}")), daemon=True).start()
-    done.wait(TIMEOUT_S)
+    done.wait(timeout)
     decide(approval_id, False)  # no-op if already answered; otherwise a timeout counts as no
     return bool(answer and answer[0])
 
