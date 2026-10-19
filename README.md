@@ -115,6 +115,9 @@ Analyst I'm taking Friday off").
   your target companies' own job boards), and sends the best new matches. For a job you pick, it writes a tailored
   cover letter and resume changes into `Documents\Jarvis\Jobs\`; you submit the application. It tracks every
   application and reminds you to follow up. Optional: a free Adzuna key in `.env` for broader search.
+- **Travel Planner** finds and compares flights and stays (hotels, Airbnbs, rentals) for a trip, gives you live
+  search links to book yourself, saves each trip with the prices it found, and re-checks prices on trips you ask it
+  to watch (Monday and Thursday mornings). It never books or pays for anything.
 
 Change instructions or schedules in `standing_agents.json`, then send `/restart team`. Set `"enabled": false` to turn
 one off. `/stop` in an agent's topic pauses it until the team restarts. They give information and analysis, not
