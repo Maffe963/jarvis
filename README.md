@@ -111,6 +111,10 @@ Analyst I'm taking Friday off").
 - **Portfolio Advisor** keeps the holdings you tell it about ("I bought 10 NVDA at 120"), gets prices from Stooq,
   and reviews your portfolio every Sunday at 6 PM.
 - **Real Estate Advisor** helps you plan a Section 8 and Airbnb business on demand, and keeps your plan in its notes.
+- **Job Hunter** learns your resume and what you want, searches every weekday morning (Adzuna, remote boards and
+  your target companies' own job boards), and sends the best new matches. For a job you pick, it writes a tailored
+  cover letter and resume changes into `Documents\Jarvis\Jobs\`; you submit the application. It tracks every
+  application and reminds you to follow up. Optional: a free Adzuna key in `.env` for broader search.
 
 Change instructions or schedules in `standing_agents.json`, then send `/restart team`. Set `"enabled": false` to turn
 one off. `/stop` in an agent's topic pauses it until the team restarts. They give information and analysis, not
