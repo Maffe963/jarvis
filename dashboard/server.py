@@ -65,7 +65,8 @@ _busy = threading.Lock()
 SETTINGS_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard.json")
 STATIC = {"/scene3d.js": "text/javascript; charset=utf-8", "/panels.js": "text/javascript; charset=utf-8"}  # other files the page loads (fixed list, nothing else)
 THEMES = {"command": "Command Center", "village": "Village", "hud": "Stark HUD", "synthwave": "Synthwave",
-          "galaxy": "Deep Space", "matrix": "Mainframe", "abyss": "The Abyss", "forge": "Dragon Forge", "aurora": "Aurora"}
+          "galaxy": "Deep Space", "matrix": "Mainframe", "abyss": "The Abyss", "forge": "Dragon Forge", "aurora": "Aurora",
+          "zen": "Zen Garden", "clockwork": "Clockwork Workshop", "mars": "Mars Colony"}
 NICKNAMES = {"village": ("clash", "clash of clans", "coc", "town", "castle"),
              "hud": ("iron man", "stark", "jarvis", "hologram"),
              "command": ("default", "normal", "original", "classic", "war room", "tactical", "war table"),
@@ -74,7 +75,10 @@ NICKNAMES = {"village": ("clash", "clash of clans", "coc", "town", "castle"),
              "matrix": ("matrix", "hacker", "code", "terminal", "cyber", "digital rain"),
              "abyss": ("ocean", "underwater", "sea", "deep sea", "water", "submarine", "jellyfish"),
              "forge": ("volcano", "lava", "fire", "dragon", "fantasy", "medieval"),
-             "aurora": ("snow", "ice", "winter", "arctic", "frost", "northern lights", "frozen")}
+             "aurora": ("snow", "ice", "winter", "arctic", "frost", "northern lights", "frozen"),
+             "zen": ("japan", "japanese", "garden", "japanese garden", "sakura", "cherry blossom", "zen", "calm", "peaceful", "light"),
+             "clockwork": ("steampunk", "brass", "gears", "victorian", "clock", "workshop"),
+             "mars": ("mars", "red planet", "colony", "space base", "martian", "nasa", "rover")}
 
 
 def theme() -> str:
