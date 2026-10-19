@@ -983,9 +983,11 @@ def next_runs(now: datetime | None = None, days: int = 8) -> list[dict]:
 def scheduler(put) -> None:
     """In the background: every 30 seconds, hand due jobs to their agents (`put(name, text)`)."""
     def loop():
+        from team import handoff
+
         while True:
             try:
-                for name, task in due_jobs():
+                for name, task in ([] if handoff.frozen.is_set() else due_jobs()):
                     put(name, f"(Scheduled job, {datetime.now():%A %I:%M %p}) {task}")
             except Exception as e:
                 print(f"[team] schedule problem: {e}")

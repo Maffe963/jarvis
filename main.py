@@ -278,6 +278,10 @@ def run_remote() -> None:
     try:
         while not quit_requested.is_set():
             time.sleep(1)
+        while busy():  # e.g. "update yourself": let the reply go out first
+            time.sleep(0.5)
+        phone._flush()
+        time.sleep(2)
     except KeyboardInterrupt:
         pass
 

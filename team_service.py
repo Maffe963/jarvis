@@ -87,7 +87,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": "bad request"}, 400)
             return
         path = urllib.parse.urlparse(self.path).path
-        if path == "/call" and body.get("name") in CALLS:
+        if path == "/call" and body.get("name") in CALLS and not ready.is_set():
+            self._json({"result": "The agent team is still being handed over from your other computer; try again "
+                                  "in a minute."})
+        elif path == "/call" and body.get("name") in CALLS:
             function, takes = CALLS[body["name"]]
             inputs = body.get("input") or {}
             try:
@@ -138,12 +141,37 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+ready = threading.Event()  # set once this computer has the team (see handoff.wait_for_others)
+
+
 def _shutdown() -> None:
     """Stop (e.g. after Jarvis updated itself, so the new code takes over). Agents carry on after the restart."""
     print("[team] shutting down")
     agents.shutdown()
+    _stopped()
     time.sleep(0.5)
     _forget()
+    os._exit(0)
+
+
+def _stopped() -> None:
+    """Tell the other computer everything is saved, so it can take over at once."""
+    from team import handoff
+
+    if ready.is_set() and not handoff.frozen.is_set():
+        try:
+            handoff.beat("stopped")
+        except OSError:
+            pass
+
+
+def _restart_after_sleep() -> None:
+    """This computer was asleep, and the other one may have run the team meanwhile: what's in memory here is out of
+    date. Without saving anything, start a fresh team service that reads the shared files again."""
+    print("[team] woke from sleep: restarting to pick up what happened meanwhile")
+    _forget()
+    _lock_file.close()  # let the new one take the lock
+    client._launch()
     os._exit(0)
 
 
@@ -173,19 +201,23 @@ def _claim_single_instance() -> bool:
     global _lock_file
     os.makedirs(messages.LOCAL, exist_ok=True)
     _lock_file = open(os.path.join(messages.LOCAL, "service.lock"), "a+")
-    try:
-        if os.name == "nt":
-            import msvcrt
+    deadline = time.monotonic() + 15  # a service restarting itself (after a sleep) may still be exiting
+    while True:
+        try:
+            if os.name == "nt":
+                import msvcrt
 
-            _lock_file.seek(0)
-            msvcrt.locking(_lock_file.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
+                _lock_file.seek(0)
+                msvcrt.locking(_lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
 
-            fcntl.flock(_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return True
-    except OSError:
-        return False
+                fcntl.flock(_lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            if time.monotonic() > deadline:
+                return False
+            time.sleep(1)
 
 
 def main() -> None:
@@ -195,8 +227,6 @@ def main() -> None:
         print("[team] already running")
         return
     print(f"[team] starting {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    os.makedirs(messages.FOLDER, exist_ok=True)
-    messages.trim()
     approvals.phone_prompts = False  # the team bot asks in the agent's own topic instead
     # There's no voice here: announcements go to Jarvis (which says them, if it's on) and the dashboard.
     system.set_announcer(lambda msg: (print(f"[team] {msg}"), events.emit("announce", text=msg)))
@@ -205,9 +235,14 @@ def main() -> None:
     server.daemon_threads = True
     with open(client.SERVICE_FILE, "w", encoding="utf-8") as f:
         json.dump({"port": server.server_address[1], "token": TOKEN, "pid": os.getpid(), "version": VERSION}, f)
+    threading.Thread(target=server.serve_forever, daemon=True, name="api").start()  # Jarvis can find it meanwhile
     from team import handoff
 
-    handoff.start_heartbeat()  # tells a Mac in Mac mode that this machine is on
+    handoff.wait_for_others()  # if the Mac (or PC) has the team, wait for it to save and let go
+    os.makedirs(messages.FOLDER, exist_ok=True)
+    messages.trim()
+    ready.set()
+    handoff.start_heartbeat(on_wake=_restart_after_sleep)
 
     from team import telegram_team
 
@@ -223,11 +258,13 @@ def main() -> None:
 
     standing.scheduler(run_job)
     try:
-        server.serve_forever()
+        while True:
+            time.sleep(3600)
     except KeyboardInterrupt:
         pass
     finally:
         agents.shutdown()
+        _stopped()
         _forget()
 
 

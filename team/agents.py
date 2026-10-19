@@ -555,7 +555,9 @@ def deliver(sender: str, to: str, text: str, via: str = "") -> str:
 # ---------- saving and restoring ----------
 
 def save() -> None:
-    if _shutting_down.is_set():
+    from team import handoff
+
+    if _shutting_down.is_set() or handoff.frozen.is_set():  # frozen: woke from sleep, a fresh service takes over
         return
     os.makedirs(messages.FOLDER, exist_ok=True)
     with _save_lock:  # snapshot and write together, so an older snapshot never overwrites a newer one

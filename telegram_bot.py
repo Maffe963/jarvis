@@ -308,6 +308,9 @@ class PhoneJarvis:
             self.send(f"🔔 {text}")
 
     def _poll(self) -> None:
+        from team import handoff
+
+        handoff.wait_for_others()  # the other computer (Mac mode) answers until it has let go
         offset, backoff = None, 1
         while True:
             try:
@@ -429,7 +432,8 @@ class PhoneJarvis:
         updater._restart_after_reply()
 
     def _off(self) -> None:
-        if self._ask("Turn Jarvis off on the PC?" + ("" if launcher_running() else " You won't be able to "
+        where = "on the PC" if os.name == "nt" else "on the Mac (Mac mode)"
+        if self._ask(f"Turn Jarvis off {where}?" + ("" if launcher_running() else " You won't be able to "
                      "reach me from your phone until it's started on the PC again.")):
             self.send("Turning off. 👋" + (" Send /on when you want me back." if launcher_running() else ""))
             self.turn_off()
