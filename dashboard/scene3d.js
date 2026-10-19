@@ -1722,13 +1722,35 @@ export function createScene(container, hooks) {
     const pick = new THREE.Mesh(new THREE.SphereGeometry(group.userData.height * .62, 12, 8), new THREE.MeshBasicMaterial({ visible: false }));
     pick.userData.nodeId = id; group.add(pick);
     const label = makeLabel(id); label.position.y = group.userData.height + .2; group.add(label);
+    const aura = kind === "agent" ? makeAura(group.userData.height, colorFor(status)) : null;
+    if (aura) group.add(aura);
     scene.add(group);
-    nodes[id] = { group, pick, label, kind, status, info, spawnAt: kind === "agent" ? performance.now() : null, base: new THREE.Vector3() };
+    nodes[id] = { group, pick, label, kind, status, info, aura, auraLevel: 0, spawnAt: kind === "agent" ? performance.now() : null, base: new THREE.Vector3() };
     if (kind === "agent") {
       const line = makeLink(id); links[id] = line; scene.add(line);
     }
     updateLabel(id);
     return nodes[id];
+  }
+
+  // While an agent works: a ring spins and pulses around its base and three sparks circle it, in the status colour,
+  // the same in every theme, so who's busy is clear at a glance.
+  function makeAura(height, color) {
+    // glowing (added light) on dark themes; solid on light ones, where added light barely shows
+    const light = theme.matte || themeKey === "village";
+    const aura = new THREE.Group(), r = Math.max(1.05, height * .62), add = light ? THREE.NormalBlending : THREE.AdditiveBlending;
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r, r + .09, 64, 1, 0, Math.PI * 1.6),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: add }));
+    ring.rotation.x = -Math.PI / 2;
+    const glow = new THREE.Mesh(new THREE.RingGeometry(r - .2, r + .3, 64),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, blending: add }));
+    glow.rotation.x = -Math.PI / 2;
+    const sparks = [0, 1, 2].map(() => sprite(glowTexture(), .55, { color, opacity: 0, blending: add }));
+    aura.add(ring, glow, ...sparks);
+    aura.position.y = -1.47;
+    aura.userData = { ring, glow, sparks, r, height };
+    aura.visible = false;
+    return aura;
   }
 
   function makeLink(id) {
@@ -1763,9 +1785,12 @@ export function createScene(container, hooks) {
       ? ({ starting: "🧳", working: "🔨", waiting: "💤", "needs you": "❗", done: "💰", stopped: "🏳️", failed: "💥" }[n.status] || "🔨") : "";
     const badge = themeKey === "village" && n.kind === "agent" ? hooks.roleIcon(n.info) : "";
     const star = n.kind === "agent" && n.info?.kind === "standing" ? `<span class="star" title="Always on">★</span>` : "";
+    const working = n.kind === "agent" && (n.status === "working" || n.status === "starting");
+    n.label.element.classList.toggle("working", working);
+    n.label.element.classList.toggle("idle", n.kind === "agent" && n.status === "waiting");
     n.label.element.innerHTML =
       `${icon ? `<div class="bubble">${icon}</div>` : ""}<div class="name">${star}${badge ? `<span class="badge">${badge}</span>` : ""}${escapeHtml(name)}</div>` +
-      (sub ? `<div class="state" style="--c:#${new THREE.Color(colorFor(n.status)).getHexString()}">${escapeHtml(sub)}</div>` : "") +
+      (sub ? `<div class="state" style="--c:#${new THREE.Color(colorFor(n.status)).getHexString()}">${working ? '<span class="cog">⚙</span>' : ""}${escapeHtml(sub)}</div>` : "") +
       (doing ? `<div class="doing">${escapeHtml(doing.length > 30 ? doing.slice(0, 29) + "…" : doing)}</div>` : "");
   }
 
@@ -1783,6 +1808,10 @@ export function createScene(container, hooks) {
       }
     });
     if (links[id] && links[id].material.color) links[id].material.color.copy(themeKey === "village" ? new THREE.Color(0xd9bd82) : c);
+    if (n.aura) {
+      const u = n.aura.userData;
+      for (const m of [u.ring.material, u.glow.material, ...u.sparks.map(s => s.material)]) m.color.copy(c);
+    }
   }
 
   // ---- building a theme ----
@@ -1994,6 +2023,23 @@ export function createScene(container, hooks) {
         if (k >= 1) n.spawnAt = null;
       }
       const busy = n.kind === "jarvis" || ACTIVE.includes(n.status);
+      if (n.aura) {   // fade the working aura in and out, and keep it turning while the agent works
+        const working = n.status === "working" || n.status === "starting";
+        n.auraLevel += ((working ? 1 : 0) - n.auraLevel) * Math.min(1, dt * 3);
+        const a = n.aura, au = a.userData, lvl = n.auraLevel;
+        a.visible = lvl > .02;
+        if (a.visible) {
+          au.ring.rotation.z -= dt * 2.2;
+          const beat = .5 + .5 * Math.sin(t * 4 + id.length);
+          au.ring.material.opacity = lvl * (.65 + .35 * beat);
+          au.glow.material.opacity = lvl * (.12 + .14 * beat);
+          au.sparks.forEach((sp, i) => {
+            const ang = t * 1.8 + i * Math.PI * 2 / 3, h = au.height * (.25 + .2 * Math.sin(t * 2.4 + i * 2));
+            sp.position.set(Math.cos(ang) * au.r, .2 + h, Math.sin(ang) * au.r);
+            sp.material.opacity = lvl * (.7 + .3 * Math.sin(t * 6 + i));
+          });
+        }
+      }
       for (const [obj, sx, sy, sz] of u.spin || []) { obj.rotation.x += (sx || 0) * dt * (busy ? 1 : .3); obj.rotation.y += (sy || 0) * dt * (busy ? 1 : .3); obj.rotation.z += (sz || 0) * dt * (busy ? 1 : .3); }
       if (u.float) u.float.position.y = (u.floatBase ??= u.float.position.y) + (busy ? Math.sin(t * 2 + id.length) * .15 : 0);
       if (u.pulse) { const k = Math.sin(t * (busy ? 3 : 1.2) + id.length); u.pulse.scale.set(1 + k * .07, 1 - k * .1, 1 + k * .07); }
