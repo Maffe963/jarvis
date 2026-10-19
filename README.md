@@ -111,13 +111,24 @@ Analyst I'm taking Friday off").
 - **Portfolio Advisor** keeps the holdings you tell it about ("I bought 10 NVDA at 120"), gets prices from Stooq,
   and reviews your portfolio every Sunday at 6 PM.
 - **Real Estate Advisor** helps you plan a Section 8 and Airbnb business on demand, and keeps your plan in its notes.
-- **Job Hunter** learns your resume and what you want, searches every weekday morning (Adzuna, remote boards and
-  your target companies' own job boards), and sends the best new matches. For a job you pick, it writes a tailored
-  cover letter and resume changes into `Documents\Jarvis\Jobs\`; you submit the application. It tracks every
-  application and reminds you to follow up. Optional: a free Adzuna key in `.env` for broader search.
-- **Travel Planner** finds and compares flights and stays (hotels, Airbnbs, rentals) for a trip, gives you live
-  search links to book yourself, saves each trip with the prices it found, and re-checks prices on trips you ask it
-  to watch (Monday and Thursday mornings). It never books or pays for anything.
+- **Job Hunter** learns your resume and what you want, searches three times every weekday (8:30, 12:30, 5:30:
+  Adzuna, remote boards, your target companies' own job boards and the web) and only messages you about strong
+  matches (8/10 or better), so you can apply early. For a job you pick, it writes a tailored cover letter and resume
+  changes into `Documents\Jarvis\Jobs\`; you submit the application. It tracks every application and reminds you
+  to follow up. Optional: a free Adzuna key in `.env` for broader search.
+- **Travel Planner** is your travel deal expert. It compares flights and stays (hotels, Airbnbs, rentals) in cash,
+  points or both, working out cents per point for every points option, and knows the Chase and Amex transfer partners
+  and sweet spots. Every morning it scans flight-deal and points-news feeds and tells you only when something is
+  worth it: a new Chase or Amex transfer bonus that makes a trip you want cheaper, or a great fare or award to a
+  place on your wishlist, with the numbers and exact steps to book. It keeps your points balances and wishlist, and
+  re-checks prices on trips you watch. It never books, pays or transfers points: you do.
+- **Video Editor** makes TikToks and Reels from your footage: a strong hook, fast cuts, bold captions in the safe
+  zone, captions and hashtags to post with. For bigger jobs (several clips from one long video) it splits the work
+  between up to 3 helpers that cut at the same time, then checks and hands you all of them.
+
+Specialists only ping you when something needs you: a question, a Yes/No approval, a finished result, or a scheduled
+report with something worth telling you (a check that finds nothing stays silent). Everything else (agents talking
+to each other, status changes) still shows in the group and on the dashboard, but arrives silently.
 
 Change instructions or schedules in `standing_agents.json`, then send `/restart team`. Set `"enabled": false` to turn
 one off. `/stop` in an agent's topic pauses it until the team restarts. They give information and analysis, not

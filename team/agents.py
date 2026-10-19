@@ -55,6 +55,7 @@ RESUMED = ("(The team service restarted while you were working, so your last ste
 ALONE_GRACE_S = 60  # a waiting agent whose teammates have all finished wraps up after this long
 USER_IDS = ("user", "jarvis", "the user")
 STOP_NOTE = "(stopped)"  # wakes a waiting agent when it's stopped; never a job
+QUIET = "[quiet]"  # a standing agent's whole reply when a job found nothing worth telling the user: nothing is posted
 
 # ----- review -----
 # using any of these means the work gets reviewed
@@ -78,7 +79,8 @@ Keep the notebook current with notebook_add, and tidy it with notebook_rewrite w
 it is forgotten after a while. Other agents on the team: {team}; message them with send_message, or Jarvis with
 to="jarvis". Use ask_user only for what really needs the user. You can't use the screen, mouse, keyboard or apps.
 You give information and analysis, not professional financial, legal or tax advice: say so when it matters, and
-never present a guess as a fact. Today is {today}."""
+never present a guess as a fact. When a scheduled job finds nothing worth the user's attention, reply with exactly
+[quiet] and nothing else: that reply isn't posted, so the user only hears from you when it matters. Today is {today}."""
 MAX_REVIEW_ROUNDS = 3
 REVIEWER_NAME = "Reviewer"
 REVIEWER_ROLE = "Reviews teammates' code and files for safety, correctness and efficiency"
@@ -139,6 +141,8 @@ class Agent:
         self.started = saved.get("started", time.time())
         self.kind = saved.get("kind", "agent")  # or "coder" or "reviewer"
         self.workspace: dict | None = saved.get("workspace")  # a coder's worktree and branch
+        self.parent: str = saved.get("parent", "")  # a helper: the standing agent that started it, and gets its result
+        self.toolkits: list[str] = list(saved.get("toolkits", []))  # a helper: its parent's work tools
         # rounds asked for; how much of the log the last request covered, and how much an approval has cleared
         self.review: dict = saved.get("review") or {"rounds": 0, "requested": 0, "cleared": 0, "notes": ""}
         self.session = None
@@ -147,11 +151,12 @@ class Agent:
         ws = self.workspace or {}
         return {"id": self.id, "name": self.name, "role": self.role, "task": self.task, "status": self.status,
                 "steps": len(self.log), "result": self.result, "started": self.started, "kind": self.kind,
-                "repo": ws.get("repo", ""), "branch": ws.get("branch", ""), "doing": self.log[-1][:160] if self.log else ""}
+                "repo": ws.get("repo", ""), "branch": ws.get("branch", ""), "parent": self.parent, "doing": self.log[-1][:160] if self.log else ""}
 
     def saved(self) -> dict:
         return {**self.info(), "inbox": list(self.inbox), "history": list(self.history), "log": list(self.log),
-                "review": dict(self.review), "ending": self.cancelled.is_set(), "workspace": self.workspace}
+                "review": dict(self.review), "ending": self.cancelled.is_set(), "workspace": self.workspace,
+                "toolkits": list(self.toolkits)}
 
     def unreviewed_changes(self) -> bool:
         """Whether it wrote files or ran project commands since its work was last approved."""
@@ -182,6 +187,10 @@ class Agent:
 
         def ask_user(inputs: dict) -> str:
             question = inputs.get("question", "")
+            if self.parent:  # the user talks to the specialist, which answers for its helpers
+                deliver(self.id, self.parent, f"Question from your helper {self.name}: {question}")
+                return (f"Your question went to {self.parent}, who'll answer (asking the user if needed). End your "
+                        "turn now; the answer comes back as a message.")
             self.set_status("needs you", question)
             message = messages.add(self.name, self.id, "user", "user", question, kind="question")
             events.emit("message", sender=self.id, to="user", text=question, msg=message["id"])
@@ -242,7 +251,7 @@ class Agent:
         def logged(name: str, handler):  # so the dashboard shows these steps and the review gate sees changes
             def run(inputs: dict) -> str:
                 result = handler(inputs)
-                self.log.append(f"{name}: {(str(result).splitlines() or [''])[0][:100]}")
+                self.log.append(f"{name}: {_step_summary(result)}")
                 return result
             return run
 
@@ -253,6 +262,8 @@ class Agent:
             extra = coding.coder_tools(self.workspace)
         elif self.kind == "reviewer":
             extra = coding.reviewer_tools(lambda q: approvals.ask(q, self.name, self.id))
+        elif self.toolkits:  # a standing agent's helper: the same work tools (its video tools, say)
+            extra = standing.tools_for(self, {"toolkits": self.toolkits}, notebook=False)
         extra = {name: (schema, logged(name, handler)) for name, (schema, handler) in extra.items()}
 
         text = {"type": "string"}
@@ -296,6 +307,19 @@ class Agent:
 
     # ----- running -----
 
+    def _helping(self) -> bool:
+        """A helper whose specialist is still on the team, or with its own renders or transcripts running: more
+        will come (the specialist's reply, or a job's result), so it isn't left alone."""
+        if not self.parent:
+            return False
+        from team import video
+
+        with video._jobs_lock:
+            if any(j["agent"] == self.name and j["status"] == "running" for j in video._jobs.values()):
+                return True
+        parent = find(self.parent)
+        return parent is not None and parent.status not in FINISHED
+
     def _wait_for_message(self, last_reply: str) -> str | None:
         """The next message, or None if it's time to stop: idle for hours, or left waiting after everyone else on
         the team has finished (nobody is going to message it), unless it's waiting on the user."""
@@ -306,7 +330,7 @@ class Agent:
                 return message
             waited += 5
             others = [a for a in active() if a is not self and a.kind != "standing"]  # those never finish
-            if others or self.status == "needs you":
+            if others or self.status == "needs you" or self._helping():
                 alone_since = None
             else:
                 alone_since = alone_since if alone_since is not None else waited
@@ -333,6 +357,8 @@ class Agent:
         team = ", ".join(f"{a.name} ({a.role})" for a in active() if a is not self) or "none yet"
         prompt = PROMPT.format(name=self.name, role=self.role, team=team)
         allowed = REVIEWER_TOOLS if self.kind == "reviewer" else background.ALLOWED
+        if self.parent:  # never more than its specialist may use
+            allowed = set(standing.definition(self.parent).get("tools", [])) & background.ALLOWED
         if self.kind == "coder" and self.workspace:
             prompt += CODER_GUIDE.format(**self.workspace)
             allowed = {"web_search"}  # everything else it does goes through its workspace's tools
@@ -380,7 +406,13 @@ class Agent:
             note = coding.remove_workspace(self.workspace)
             if note and self.result:
                 self.result += f"\n\n{note}"
-        if self.status == "failed":
+        if self.parent:  # a helper reports to the specialist that started it, not to the user
+            done = self.result or "(it stopped without a result)"
+            if self.status not in FINISHED:
+                self.set_status("done" if self.result else "stopped", _short(done, 120))
+            events.emit("result", agent=self.id, text=done)
+            deliver(self.id, self.parent, f"Your helper {self.name} is done ({self.status}). Its result:\n{done}")
+        elif self.status == "failed":
             _report(self)
         elif self.result:
             logged = messages.add(self.name, self.id, "Jarvis", "jarvis", self.result, kind="result")
@@ -441,8 +473,10 @@ def _run_standing(agent: "Agent", resumed: bool) -> None:
                 return
             reply = f"(That job failed: {e})"
             agent.history.append({"role": "assistant", "content": reply})
-        message = None
-        if reply.strip():
+        asked, message = (message or "").startswith("Message from the user"), None
+        if reply.strip().startswith(QUIET) and asked:
+            reply = "Nothing new to report right now."  # the user asked: they get an answer, even an empty one
+        if reply.strip() and not reply.strip().startswith(QUIET):
             logged = messages.add(agent.name, agent.id, "Jarvis", "jarvis", reply, kind="update")
             events.emit("message", sender=agent.id, to="jarvis", text=reply.strip()[:3500], kind="update",
                         msg=logged["id"])  # line breaks kept: this is the agent's answer, read in its topic
@@ -479,6 +513,15 @@ def sync_standing() -> str:
     changes = ([f"started {', '.join(started)}"] if started else []) + ([f"turned off {', '.join(stopped)}"] if stopped else [])
     text = "; ".join(changes)
     return text[:1].upper() + text[1:] + "." if changes else "All standing agents are running."
+
+
+def _step_summary(result) -> str:
+    """One readable line for the dashboard: the text of a tool's result (images just counted), not its raw form."""
+    if isinstance(result, list):
+        texts = [b.get("text", "") for b in result if isinstance(b, dict) and b.get("type") == "text"]
+        images = sum(1 for b in result if isinstance(b, dict) and b.get("type") == "image")
+        result = " ".join(texts) + (f" ({images} image{'s' if images != 1 else ''})" if images else "")
+    return (str(result).strip().splitlines() or [""])[0][:100]
 
 
 def _report(agent: Agent) -> None:
@@ -605,7 +648,8 @@ def shutdown() -> None:
 
 # ---------- what Jarvis (and the Telegram bot) can do, through the team service ----------
 
-def create_agent(name: str, role: str, task: str, kind: str = "agent", repo: str = "") -> str:
+def create_agent(name: str, role: str, task: str, kind: str = "agent", repo: str = "", parent: str = "",
+                 toolkits: list[str] | None = None) -> str:
     """`kind`: "agent", "coder" (works on `repo`, see team/coding.py), "reviewer" (the team's Reviewer) or
     "standing" (see team/standing.py); the last two don't count towards MAX_AGENTS."""
     specialist = next((n for n in standing.definitions() if n.lower() == name.strip().lower()), None)
@@ -622,9 +666,10 @@ def create_agent(name: str, role: str, task: str, kind: str = "agent", repo: str
         if isinstance(workspace, str):
             return workspace
         agent.workspace = workspace
+    agent.parent, agent.toolkits = parent, list(toolkits or [])
     with _lock:
         _agents[agent.id] = agent
-    events.emit("agent", agent=agent.id, name=agent.name, role=agent.role, task=agent.task, kind=kind)
+    events.emit("agent", agent=agent.id, name=agent.name, role=agent.role, task=agent.task, kind=kind, parent=parent)
     save()
     threading.Thread(target=agent.run, daemon=True, name=f"agent-{agent.name}").start()
     where = f" on branch {agent.workspace['branch']} of {agent.workspace['repo']}" if agent.workspace else ""
