@@ -110,6 +110,41 @@ class TelegramAPI:
             return resp.read()
 
 
+def incoming_file(message: dict) -> tuple[str, str, str] | None:
+    """(file id, file name, kind) for a photo, video, GIF or file in a message, or None."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    if message.get("photo"):  # several sizes; the last is the largest
+        return message["photo"][-1]["file_id"], f"photo-{stamp}.jpg", "photo"
+    for kind, default in (("video", f"video-{stamp}.mp4"), ("animation", f"gif-{stamp}.mp4"),
+                          ("video_note", f"video-note-{stamp}.mp4"), ("document", f"file-{stamp}")):
+        item = message.get(kind)
+        if item:
+            return item["file_id"], item.get("file_name") or default, "video" if kind != "document" else "file"
+    return None
+
+
+def save_incoming(api: "TelegramAPI", file_id: str, name: str) -> str:
+    """Save a file sent from the phone into Downloads\\From phone, never overwriting anything. Raises RuntimeError
+    (with a message for the user) if it can't be downloaded."""
+    folder = os.path.join(os.path.expanduser("~"), "Downloads", "From phone")
+    os.makedirs(folder, exist_ok=True)
+    name = os.path.basename(name).strip() or "file"
+    stem, ext = os.path.splitext(name)
+    path, n = os.path.join(folder, name), 1
+    while os.path.exists(path):
+        n += 1
+        path = os.path.join(folder, f"{stem} ({n}){ext}")
+    try:
+        data = api.download(file_id)
+    except Exception as e:
+        raise RuntimeError(f"Couldn't download that file ({e}). Telegram only lets bots download files up to "
+                           "20 MB: for a bigger video, put it in a folder on the PC (OneDrive, Google Drive or a "
+                           "USB stick) and tell the agent where.") from None
+    with open(path, "wb") as f:
+        f.write(data)
+    return path
+
+
 def _plain(text: str) -> str:
     return re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), text)  # Telegram shows ** literally
 
@@ -318,13 +353,8 @@ class PhoneJarvis:
             self._command(text)
         elif "voice" in message or "audio" in message:
             self.jobs.put(("voice", (message.get("voice") or message.get("audio"))["file_id"]))
-        elif "document" in message or "photo" in message or "video" in message:
-            if "photo" in message:  # several sizes; the last is the largest
-                file_id, name = message["photo"][-1]["file_id"], f"photo-{time.strftime('%Y%m%d-%H%M%S')}.jpg"
-            else:
-                item = message.get("document") or message["video"]
-                file_id = item["file_id"]
-                name = item.get("file_name") or f"video-{time.strftime('%Y%m%d-%H%M%S')}.mp4"
+        elif incoming_file(message):
+            file_id, name, _ = incoming_file(message)
             self.jobs.put(("file", (file_id, name, (message.get("caption") or "").strip())))
         elif text:
             if self.working.is_set() or not self.jobs.empty():
@@ -419,23 +449,11 @@ class PhoneJarvis:
                 self.send(f"Something went wrong: {e}")
 
     def _save_incoming(self, file_id: str, name: str) -> str | None:
-        """Save a file sent from the phone into Downloads\\From phone, never overwriting anything."""
-        folder = os.path.join(os.path.expanduser("~"), "Downloads", "From phone")
-        os.makedirs(folder, exist_ok=True)
-        name = os.path.basename(name).strip() or "file"
-        stem, ext = os.path.splitext(name)
-        path, n = os.path.join(folder, name), 1
-        while os.path.exists(path):
-            n += 1
-            path = os.path.join(folder, f"{stem} ({n}){ext}")
         try:
-            data = self.api.download(file_id)
-        except Exception as e:
-            self.send(f"Couldn't download that file ({e}). Telegram only lets bots download files up to 20 MB.")
+            return save_incoming(self.api, file_id, name)
+        except RuntimeError as e:
+            self.send(str(e))
             return None
-        with open(path, "wb") as f:
-            f.write(data)
-        return path
 
     def send_file(self, path: str, caption: str = "") -> None:
         self.api.send_document(self.chat_id, path, caption)

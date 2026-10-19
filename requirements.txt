@@ -14,3 +14,4 @@ pystray>=0.19
 Pillow>=10.1
 playwright>=1.40
 onnxruntime-genai>=0.10
+imageio-ffmpeg>=0.5

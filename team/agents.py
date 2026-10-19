@@ -228,6 +228,14 @@ class Agent:
             deliver(self.id, author.id, ("APPROVED. " if approved else "CHANGES NEEDED. ") + (notes or ""))
             return f"Sent your verdict to {author.name}."
 
+        def view_file(inputs: dict):
+            from team import video
+
+            try:
+                return video.view_file(inputs.get("path", ""))
+            except Exception as e:  # not allowed, missing, unreadable: tell the agent
+                return f"Couldn't show that: {e}"
+
         def team_list(_: dict) -> str:
             return "\n".join(f"{a.name} ({a.role}) - {a.status}" for a in active() if a is not self) or "Just you."
 
@@ -262,6 +270,11 @@ class Agent:
                        finish),
             "team": ({"name": "team", "description": "Who else is on the team and what they're doing.",
                       "input_schema": {"type": "object", "properties": {}, "required": []}}, team_list),
+            "view_file": ({"name": "view_file", "description": "Open a file the user sent or any file on the PC: "
+                           "see an image (screenshot, photo), frames from across a video, or read a plain text "
+                           "file (notes, CSV, JSON, logs, code).",
+                           "input_schema": {"type": "object", "properties": {"path": text},
+                                            "required": ["path"]}}, view_file),
         } | ({
             "review_verdict": ({"name": "review_verdict", "description": "Give a teammate your review: approved or "
                                 "not, with each problem and its fix.",
