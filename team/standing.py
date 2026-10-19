@@ -1223,24 +1223,31 @@ PROFILE_FIELDS = ("allergies", "restrictions", "likes", "dislikes", "equipment",
 MEALS = ("breakfast", "lunch", "dinner", "snack", "dessert")
 # What an allergy also rules out, beyond its own name (checked as whole words, singular or plural).
 ALLERGENS = {
-    "tree nut": ["almond", "cashew", "walnut", "pecan", "pistachio", "hazelnut", "macadamia", "brazil nut",
-                 "pine nut", "praline", "marzipan", "nutella"],
+    "tree nut": ["nut", "almond", "cashew", "walnut", "pecan", "pistachio", "hazelnut", "macadamia", "brazil nut",
+                 "pine nut", "praline", "marzipan", "nutella", "pesto", "frangipane", "nougat"],
     "peanut": ["peanut", "groundnut", "satay"],
-    "shellfish": ["shrimp", "prawn", "crab", "lobster", "scallop", "clam", "mussel", "oyster", "crawfish", "crayfish",
-                  "langoustine"],
-    "fish": ["salmon", "tuna", "cod", "tilapia", "trout", "halibut", "anchovy", "sardine", "mackerel", "haddock",
-             "fish sauce", "worcestershire"],
-    "dairy": ["milk", "buttermilk", "cheese", "butter", "cream", "yogurt", "yoghurt", "ghee", "whey", "casein", "parmesan",
-              "mozzarella", "ricotta", "cheddar", "feta", "custard", "kefir"],
+    "shellfish": ["shellfish", "shrimp", "prawn", "crab", "lobster", "scallop", "clam", "mussel", "oyster", "crawfish",
+                  "crayfish", "langoustine", "crustacean"],
+    "fish": ["fish", "salmon", "tuna", "cod", "tilapia", "trout", "halibut", "anchovy", "sardine", "mackerel",
+             "haddock", "fish sauce", "worcestershire", "bonito", "dashi"],
+    "dairy": ["dairy", "milk", "buttermilk", "cheese", "butter", "cream", "yogurt", "yoghurt", "ghee", "whey",
+              "casein", "parmesan", "mozzarella", "ricotta", "cheddar", "feta", "custard", "kefir", "paneer"],
     "egg": ["egg", "mayonnaise", "mayo", "meringue", "aioli"],
-    "gluten": ["wheat", "flour", "bread", "pasta", "barley", "rye", "couscous", "seitan", "soy sauce", "breadcrumb",
-               "panko", "tortilla", "noodle", "farro", "bulgur", "semolina", "spelt"],
+    "gluten": ["gluten", "wheat", "flour", "bread", "pasta", "barley", "rye", "couscous", "seitan", "soy sauce",
+               "breadcrumb", "panko", "tortilla", "noodle", "farro", "bulgur", "semolina", "spelt", "gnocchi",
+               "malt"],
     "soy": ["soy", "tofu", "edamame", "tempeh", "miso", "soy sauce"],
     "sesame": ["sesame", "tahini", "hummus"],
 }
-ALLERGEN_ALIASES = {"nuts": "tree nut", "tree nuts": "tree nut", "peanuts": "peanut", "milk": "dairy",
-                    "lactose": "dairy", "eggs": "egg", "wheat": "gluten", "celiac": "gluten", "coeliac": "gluten",
-                    "seafood": "shellfish", "soybean": "soy", "soya": "soy"}
+# Words in the user's own phrasing ("lactose intolerance", "celiac disease") and the groups they mean.
+ALLERGEN_WORDS = {"nut": ["tree nut", "peanut"], "tree nut": ["tree nut"], "peanut": ["peanut"],
+                  "seafood": ["fish", "shellfish"], "shellfish": ["shellfish"], "crustacean": ["shellfish"],
+                  "fish": ["fish"], "dairy": ["dairy"], "milk": ["dairy"], "lactose": ["dairy"], "egg": ["egg"],
+                  "gluten": ["gluten"], "wheat": ["gluten"], "celiac": ["gluten"], "coeliac": ["gluten"],
+                  "soy": ["soy"], "soya": ["soy"], "soybean": ["soy"], "sesame": ["sesame"]}
+NOT_NUTS = re.compile(r"\b(nutmeg|butternut|coconut|doughnut|donut|chestnut|nut[- ]free|water chestnut)s?\b")
+# Only these have real allergen-free versions (oat milk, vegan mayo, gluten-free pasta) that can be confirmed safe.
+SUBSTITUTABLE = {"dairy", "egg", "gluten"}
 
 
 def _kitchen() -> dict:
@@ -1256,25 +1263,49 @@ def _kitchen() -> dict:
     return data
 
 
+def _allergy_groups(allergy: str) -> tuple[set[str], set[str]]:
+    """(the allergen groups an allergy as the user worded it means, the words to look for)."""
+    name = re.sub(r"\b(allerg(y|ies|ic)( to)?|intoleran(ce|t)|disease|sensitiv(e|ity)|free)\b", " ", allergy.lower())
+    name = " ".join(name.split())
+    groups = {g for word, gs in ALLERGEN_WORDS.items() if re.search(_words(word), name) for g in gs}
+    terms = {t for g in groups for t in ALLERGENS[g]}
+    if name:
+        singular = re.sub(r"ies$", "y", name) if name.endswith("ies") else re.sub(r"(?<!s)s$", "", name)
+        terms |= {name, singular}
+    return groups, terms
+
+
 def _words(term: str) -> str:
-    """A regex for `term` as whole words, singular or plural ("almond" matches "Almonds", "almond flour")."""
-    return r"\b" + r"\s+".join(re.escape(w) for w in term.lower().split()) + r"(?:s|es)?\b"
+    """A regex for `term` as whole words, singular or plural ("almond" matches "Almonds", "anchovy" "anchovies")."""
+    words = term.lower().split()
+    last = words[-1]
+    last = re.escape(last[:-1]) + "(?:y|ies)" if last.endswith("y") else re.escape(last) + "(?:s|es)?"
+    return r"\b" + r"\s+".join([re.escape(w) for w in words[:-1]] + [last]) + r"\b"
 
 
 def allergy_conflicts(ingredients: list[str], allergies: list[str], safe=()) -> list[str]:
-    """Each "ingredient (allergy)" in `ingredients` that an allergy rules out, except ingredients in `safe` (ones
-    confirmed free of the allergen, like oat milk)."""
-    safe = {x.strip().lower() for x in safe}
-    ingredients = [x for x in ingredients if x.strip().lower() not in safe]
+    """Each "ingredient (allergy)" that an allergy rules out. `safe`: [ingredient, allergy] pairs confirmed free of
+    that allergen (oat milk for a dairy allergy); each covers only that one allergy."""
+    exempt = {(str(i).strip().lower(), str(a).strip().lower()) for i, a in safe}
     found = []
     for allergy in allergies:
-        name = allergy.lower().strip()
-        key = ALLERGEN_ALIASES.get(name, name.rstrip("s") if name.rstrip("s") in ALLERGENS else name)
-        terms = {name, name.rstrip("s"), *ALLERGENS.get(key, [])} - {""}
+        groups, terms = _allergy_groups(allergy)
         for ingredient in ingredients:
-            if any(re.search(_words(t), ingredient.lower()) for t in terms):
+            text = ingredient.lower()
+            if (text.strip(), allergy.strip().lower()) in exempt:
+                continue
+            check = NOT_NUTS.sub(" ", text) if "tree nut" in groups or "peanut" in groups else text
+            if any(re.search(_words(t), check) for t in terms):
                 found.append(f"{ingredient} ({allergy})")
     return found
+
+
+def exemption_problem(ingredient: str, allergy: str) -> str:
+    """Why an ingredient can't be confirmed safe for an allergy, or "" if it can."""
+    groups, _ = _allergy_groups(allergy)
+    if not groups or not groups <= SUBSTITUTABLE:
+        return f"'{ingredient}' can't be marked safe for {allergy}: swap it for something else"
+    return ""
 
 
 def _slug_recipe(name: str) -> str:
@@ -1309,24 +1340,37 @@ def _kitchen_tools(agent) -> dict:
     def save_recipe(i: dict) -> str:
         name = str(i.get("name", "")).strip()
         ingredients = [str(x).strip() for x in i.get("ingredients") or [] if str(x).strip()]
-        if not name or not ingredients or not i.get("steps"):
+        steps = i.get("steps")
+        steps = [x for x in re.split(r"\n+", steps)] if isinstance(steps, str) else steps or []
+        if not name or not ingredients or not [x for x in steps if str(x).strip()]:
             return "Give the recipe's name, ingredients (with amounts) and steps."
         meal = str(i.get("meal", "")).lower().strip()
         if meal not in MEALS:
             return f"meal must be one of {', '.join(MEALS)}."
         with _lock:
             data = _kitchen()
-            safe = [str(x).strip() for x in i.get("checked_safe") or [] if str(x).strip() in ingredients]
-            conflicts = allergy_conflicts(ingredients, data["profile"].get("allergies", []), safe)
+            allergies = data["profile"].get("allergies", [])
+            safe, refused = [], []
+            for ingredient in [str(x).strip() for x in i.get("checked_safe") or []]:
+                for clash in allergy_conflicts([ingredient], allergies):
+                    allergy = clash.rsplit(" (", 1)[1][:-1]
+                    problem = exemption_problem(ingredient, allergy)
+                    if problem:
+                        refused.append(problem)
+                    elif ingredient in ingredients:
+                        safe.append([ingredient, allergy])
+            if refused:
+                return "NOT saved: " + "; ".join(refused) + "."
+            conflicts = allergy_conflicts(ingredients, allergies, safe)
             if conflicts:
                 return ("NOT saved: these clash with the user's allergies: " + "; ".join(conflicts) + ". Swap them "
-                        "out. Only if an ingredient is truly free of the allergen (e.g. 'oat milk' for a dairy "
-                        "allergy), list it in checked_safe.")
+                        "out. Only a true allergen-free version of a dairy, egg or gluten ingredient (e.g. 'oat milk', "
+                        "'gluten-free pasta') may be listed in checked_safe.")
             key = _slug_recipe(name)
             old = data["recipes"].get(key, {})
             data["recipes"][key] = {
                 **old, "name": name, "meal": meal, "ingredients": ingredients,
-                "steps": [str(x).strip() for x in i["steps"] if str(x).strip()],
+                "steps": [str(x).strip() for x in steps if str(x).strip()],
                 "minutes": i.get("minutes") or old.get("minutes"), "servings": i.get("servings") or old.get("servings"),
                 "tags": i.get("tags") or old.get("tags", []), "notes": str(i.get("notes") or old.get("notes", "")),
                 "checked_safe": safe,
@@ -1372,8 +1416,11 @@ def _kitchen_tools(agent) -> dict:
             r = data["recipes"].get(_slug_recipe(str(i.get("name", ""))))
             if not r:
                 return "No recipe by that name; use cookbook to search."
-            if isinstance(i.get("rating"), (int, float)):
-                r["rating"] = max(1, min(5, int(i["rating"])))
+            if i.get("rating") not in (None, ""):
+                try:
+                    r["rating"] = max(1, min(5, round(float(i["rating"]))))
+                except (TypeError, ValueError):
+                    return "The rating should be a number from 1 to 5."
             if i.get("feedback"):
                 r["notes"] = (r.get("notes", "") + f"\n{date.today().isoformat()}: {i['feedback']}").strip()[-2000:]
             if i.get("made"):
@@ -1398,8 +1445,9 @@ def _kitchen_tools(agent) -> dict:
                                "servings": {"type": "integer"}, "tags": LIST, "notes": TEXT,
                                "suggested_today": {"type": "boolean", "description": "True when you're suggesting it "
                                                    "to the user today"},
-                               "checked_safe": {**LIST, "description": "Ingredients flagged by the allergy check that "
-                                                "you've confirmed are free of the allergen (e.g. 'oat milk')"}},
+                               "checked_safe": {**LIST, "description": "Only for dairy, egg or gluten: ingredients flagged by the "
+                                                "allergy check that are a true allergen-free version (e.g. 'oat milk', "
+                                                "'gluten-free pasta')"}},
                               ["name", "meal", "ingredients", "steps"]), save_recipe),
         "cookbook": (_tool("cookbook", "The user's saved recipes with ratings, how often they've made them and when "
                            "you last suggested them. Filter by meal, words, or minimum rating.",
