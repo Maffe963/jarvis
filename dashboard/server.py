@@ -55,6 +55,7 @@ def _token() -> str:
 
 
 TOKEN = _token()
+HOOK_TOKEN_FILE = os.path.join(os.path.dirname(HERE), "memory", "hook_token")  # this run's TOKEN, for claude_hooks.py
 HOSTS = {"127.0.0.1", "localhost"} | ({urllib.parse.urlparse(PUBLIC_URL).hostname} if PUBLIC_URL else set())
 
 _server: ThreadingHTTPServer | None = None
@@ -409,6 +410,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"result": client.stop_agent(body.get("agent", ""))})
         elif path == "/theme":
             self._json({"result": set_theme(body.get("theme", ""))})
+        elif path == "/announce" and body.get("text", "").strip():  # claude_hooks.py: the user's Claude Code needs them
+            text = body["text"].strip()[:300]
+            events.emit("jarvis", direction="out", text=f"🔔 {text}")
+            if speaker is not None:
+                threading.Thread(target=speaker, args=(text,), daemon=True).start()
+            self._json({"ok": True})
         elif path == "/approve":
             self._json({"ok": client.answer_approval(body.get("approval", ""), bool(body.get("yes")))})
         else:
@@ -416,6 +423,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, *args) -> None:
         pass
+
+
+speaker = None  # voice mode's speak(), so notices from the user's own Claude Code sessions are said aloud
 
 
 def start(respond=None) -> str | None:
@@ -434,5 +444,10 @@ def start(respond=None) -> str | None:
         return None
     _server.daemon_threads = True
     threading.Thread(target=_server.serve_forever, daemon=True, name="dashboard").start()
+    try:
+        with open(HOOK_TOKEN_FILE, "w", encoding="utf-8") as f:
+            f.write(TOKEN)
+    except OSError:
+        pass
     print(f"[dashboard] {url()}")
     return url()

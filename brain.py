@@ -213,6 +213,9 @@ class ClaudeCodeSession:
             "--permission-mode", "dontAsk",
             "--no-session-persistence",
             "--disable-slash-commands",
+            # Plugins and hooks the user installs for their own Claude Code (setup_addons.py) would otherwise run
+            # in every Jarvis session too, adding tokens and side effects; skills are already off above.
+            "--settings", json.dumps({"disableAllHooks": True}),
         ]
         self._proc = None
         self._events: queue.Queue = queue.Queue()

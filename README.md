@@ -214,6 +214,29 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
 - `JARVIS_CAVEMAN`: a test of [Caveman](https://github.com/JuliusBrussee/caveman) (terse replies to save tokens). `test` (default): for `JARVIS_CAVEMAN_DAYS` days (default 3) each Claude session randomly has it on or off, the dashboard's Usage tab compares them, and the results go to your phone when it ends. `on` keeps it on; `off` skips it.
 - `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`: a more natural voice.
 
+## Claude Code add-ons
+
+`python setup_addons.py` (add `--dry-run` to preview) sets up your own Claude Code with:
+
+- **Skills and plugins:** Anthropic's document and example skills (Word/PDF/PowerPoint/Excel, skill-creator,
+  mcp-builder), Superpowers, code-review, hookify and pyright-lsp (it installs Pyright too).
+- **Context7:** current library docs.
+- **GitHub MCP server:** asks for a read-only token.
+- **ccstatusline:** in the status line.
+- **Two hooks** (`claude_hooks.py`):
+  - Jarvis says aloud (and on the dashboard) when Claude Code is waiting on you;
+  - a guard blocks recursive deletes of a drive, your home folder or Windows.
+
+Jarvis's own Claude Code sessions don't load any of this: hooks are off and skills and other MCP servers are
+excluded, so they cost him nothing. Google Workspace connectors are turned on at claude.ai > Settings > Connectors.
+
+Agents:
+- **Market data:** with `ALPHAVANTAGE_API_KEY` in `.env` (free), Trade Analyst and Portfolio Advisor get market
+  news with sentiment, technical indicators and company fundamentals. Answers are cached for 6 hours to stay
+  within the free quota.
+- **Web pages that need JavaScript:** Job Hunter's and Travel Planner's page readers open them in a fresh headless
+  Chrome, never a signed-in profile.
+
 ## Reviewing changes to Jarvis
 
 `REVIEW.md` is the checklist for changes to this code (safety first, then correctness and efficiency).

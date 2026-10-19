@@ -428,6 +428,8 @@ def run_voice() -> None:
     phone = start_phone()
     start_dashboard()
     set_announcer(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg), phone and phone.notify(msg)))
+    from dashboard import server as dashboard_server
+    dashboard_server.speaker = speak
     history = load_history()
     microphone = select_microphone()
     print("Starting up...")
