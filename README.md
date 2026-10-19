@@ -214,6 +214,14 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
 - `JARVIS_CAVEMAN`: a test of [Caveman](https://github.com/JuliusBrussee/caveman) (terse replies to save tokens). `test` (default): for `JARVIS_CAVEMAN_DAYS` days (default 3) each Claude session randomly has it on or off, the dashboard's Usage tab compares them, and the results go to your phone when it ends. `on` keeps it on; `off` skips it.
 - `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`: a more natural voice.
 
+## What's changed and what's planned
+
+The dashboard's Changes tab lists what's changed in Jarvis and what's planned (`changes.json`). At 9am Jarvis
+posts a short morning report in the dashboard feed, when something's new (`JARVIS_MORNING_REPORT=08:30` moves
+it, `off` stops it). A planned item can carry a setup job Jarvis runs himself at its time, or as soon as he's on
+after that: `"run": ["update", "addons"]` installs the newest Jarvis and runs `setup_addons.py`, then reports on
+the dashboard and your phone.
+
 ## Claude Code add-ons
 
 `python setup_addons.py` (add `--dry-run` to preview) sets up your own Claude Code with:

@@ -17,7 +17,7 @@ import psutil
 
 from memory.conversation import HISTORY_FILE
 from team import coding, messages, standing
-from tools import background, caveman, facts, lists, reminders, usage
+from tools import background, caveman, facts, lists, reminders, upkeep, usage
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECTS_FILE = os.path.join(ROOT, "projects.json")
@@ -407,7 +407,7 @@ def memory() -> dict:
 
 
 SECTIONS = {"tasks": tasks, "sessions": sessions, "projects": projects}  # these need the team's state
-PLAIN = {"usage": usage_report, "system": system, "memory": memory, "summary": summary}
+PLAIN = {"usage": usage_report, "system": system, "memory": memory, "summary": summary, "changes": upkeep.overview}
 
 
 def get(tab: str, team: dict) -> object:
