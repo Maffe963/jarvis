@@ -135,13 +135,17 @@ def list_monitors() -> str:
 def move_window_to_monitor(monitor: str, window: str = "", maximize: bool = True) -> str:
     target = find_monitor(monitor)
     if not target:
-        return f"I'm not sure which screen '{monitor}' is. Monitors:\n{list_monitors()}"
-    if window.strip() and window.strip().lower() not in ("this", "current", "active", "that"):
-        wanted = window.lower()
-        matches = [(h, t) for h, t in top_level_windows().items() if wanted in t.lower()]
+        return f"Couldn't tell which screen '{monitor}' is. Monitors:\n{list_monitors()}"
+    if window.strip() and window.strip().lower() not in ("this", "current", "active", "that", "it"):
+        from tools import system
+
+        # By program first ("Spotify" is Spotify.exe, whose title is the song playing), then by title.
+        matches = system._matching_windows(window)
         if not matches:
-            return f"No open window matching '{window}'."
-        hwnd, title = matches[0]
+            open_now = sorted({system._app_label(w) for w in system._app_windows()})
+            return (f"Couldn't find an open window for '{window}'. Open apps: {', '.join(open_now) or 'none'}. Try "
+                    "again with one of those names; don't use PowerShell or keyboard shortcuts to move windows.")
+        hwnd, title = matches[0]["hwnd"], matches[0]["title"]  # the one used most recently
     else:
         hwnd = win32gui.GetForegroundWindow()
         title = win32gui.GetWindowText(hwnd)
@@ -157,9 +161,10 @@ TOOLS = [
     },
     {
         "name": "move_window_to_monitor",
-        "description": "Move an open window to another monitor (maximized by default). `window` is part of its title; "
-                       "omit it for the window in front. To open something on a monitor, use open_app/open_url's "
-                       "`monitor` option instead.",
+        "description": "Move an open window to another monitor (maximized by default). `window` is the app's name "
+                       "(e.g. 'Spotify', 'VS Code') or part of its title; omit it for the window in front. Always use "
+                       "this to move windows (never PowerShell or keyboard shortcuts): call it once per window. To "
+                       "open something on a monitor, use open_app/open_url's `monitor` option instead.",
         "input_schema": {
             "type": "object",
             "properties": {
