@@ -10,7 +10,7 @@ import threading
 import time
 from datetime import datetime
 
-from tools import facts
+from tools import facts, usage
 from tools.registry import TOOLS, run_tool, task_cancelled
 
 SYSTEM_PROMPT = """You are Jarvis, a highly capable AI assistant in the style of Tony Stark's Jarvis.
@@ -120,6 +120,8 @@ def _think_api(conversation_history: list[dict], system: str, confirm, acknowled
                 for piece in stream.text_stream:
                     on_text(piece)
             response = stream.get_final_message()
+        usage.record("Jarvis (API)" if cancelled is task_cancelled else "Background (API)",
+                     {response.id: response.usage.model_dump()}, response.model)
 
         if response.stop_reason == "end_turn":
             text_blocks = [b.text for b in response.content if b.type == "text"]
@@ -158,11 +160,13 @@ class ClaudeCodeSession:
 
     def __init__(self, system_prompt: str | None = None, allowed_tools: set[str] | None = None,
                  cancelled: threading.Event | None = None, log: list[str] | None = None,
-                 extra_tools: dict | None = None) -> None:
-        """Defaults: the main conversation. Background tasks pass their own prompt, tools and stop switch."""
+                 extra_tools: dict | None = None, label: str = "Jarvis") -> None:
+        """Defaults: the main conversation. Background tasks pass their own prompt, tools and stop switch, and a
+        label saying whose session it is (for the dashboard's usage and session lists)."""
         from tools.bridge import ToolBridge
 
         self.system_prompt = system_prompt or SYSTEM_PROMPT
+        self.label = label
         self.cancelled = task_cancelled if cancelled is None else cancelled
 
         claude = shutil.which("claude")
@@ -202,6 +206,7 @@ class ClaudeCodeSession:
         # If an API key is visible, Claude Code bills it instead of using the subscription.
         for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE"):
             env.pop(var, None)
+        env["JARVIS_SESSION"] = self.label  # so the dashboard can tell whose Claude Code process this is
         workdir = os.path.join(tempfile.gettempdir(), "jarvis-claude-code")
         os.makedirs(workdir, exist_ok=True)
         cmd = list(self._cmd)
@@ -275,6 +280,7 @@ class ClaudeCodeSession:
         self._fresh = False
 
         deadline = time.monotonic() + 300
+        used, model = {}, ""  # this turn's usage, by API message
         while True:
             if self.cancelled.is_set():
                 # Ending the process stops Claude mid-thought; a fresh one starts now (replaying history)
@@ -300,7 +306,16 @@ class ClaudeCodeSession:
                     on_text(NEW_MESSAGE)
                 elif inner.get("type") == "content_block_delta" and inner["delta"].get("type") == "text_delta":
                     on_text(inner["delta"]["text"])
-            if event.get("type") == "result":
+            kind = event.get("type")
+            if kind == "assistant":
+                message = event.get("message") or {}
+                if message.get("usage"):
+                    used[message.get("id") or len(used)] = message["usage"]
+                    model = message.get("model") or model
+            elif kind == "rate_limit_event":
+                usage.record_limit(event)
+            if kind == "result":
+                usage.record(self.label, used, model)
                 if event.get("is_error"):
                     raise _error_for(str(event.get("result") or event.get("subtype")))
                 return str(event.get("result", "")).strip()
@@ -339,12 +354,12 @@ def _get_session() -> ClaudeCodeSession:
 
 
 def run_background(task: str, system_prompt: str, allowed: set[str], cancelled: threading.Event,
-                   confirm, log: list[str]) -> str:
+                   confirm, log: list[str], label: str = "Background task") -> str:
     """Work on a task in a separate Claude conversation (its own Claude Code process, tools and stop switch),
     so it doesn't hold up the main one. Returns Claude's final report."""
     request = [{"role": "user", "content": task}]
     if BACKEND == "subscription":
-        session = ClaudeCodeSession(system_prompt, allowed, cancelled, log)
+        session = ClaudeCodeSession(system_prompt, allowed, cancelled, log, label=label)
         try:
             return session.ask(request, confirm)
         finally:

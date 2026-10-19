@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jarvis Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barlow+Condensed:wght@500;700&family=Black+Ops+One&family=Cinzel:wght@600;800&family=Quicksand:wght@500;700&family=Exo+2:wght@500;700&family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barlow+Condensed:wght@500;700&family=Black+Ops+One&family=Cinzel:wght@600;800&family=Quicksand:wght@500;700&family=Exo+2:wght@500;700&family=IM+Fell+English+SC&family=Oxanium:wght@600;700&family=Shippori+Mincho:wght@600;800&family=Special+Elite&family=Titillium+Web:wght@400;600;700&family=Zen+Kaku+Gothic+New:wght@500;700&family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
@@ -116,6 +116,128 @@
   body.wide aside { border: 0; overflow: visible; }
   body.wide aside h2, body.wide #feed { display: none; }
   body.wide #approvals { position: fixed; left: 14px; bottom: 74px; width: min(380px, calc(100% - 28px)); z-index: 15; }
+  /* the roster: every agent at a glance, top of the map */
+  #roster { position: absolute; top: 10px; left: 14px; right: 14px; display: flex; gap: 6px; z-index: 5; overflow-x: auto; padding: 2px 2px 8px;
+            scrollbar-width: none; mask-image: linear-gradient(90deg, #000 92%, transparent); }
+  #roster::-webkit-scrollbar { display: none; }
+  #roster .pill { flex: none; white-space: nowrap; display: flex; align-items: center; gap: 6px; padding: 4px 11px 4px 9px; margin: 0;
+                  border-radius: var(--chip-radius); background: var(--pill-bg, var(--empty-bg)); border: var(--chip-border);
+                  color: var(--pill-text, var(--text)); font: 600 12.5px var(--font); box-shadow: 0 3px 12px #0005;
+                  backdrop-filter: blur(8px); transition: transform .15s, box-shadow .15s; }
+  #roster .pill:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--accent), 0 6px 16px #0007; }
+  #roster .pill:active { transform: translateY(0); }
+  #roster .pill .dot { width: 9px; height: 9px; margin: 0; background: var(--c); box-shadow: 0 0 8px var(--c); }
+  #roster .pill.busy .dot { animation: pulse 1.4s ease-in-out infinite; }
+  #roster .pill .st { color: var(--c); font-weight: 800; font-size: 11.5px; }
+  #roster .pill.needs { box-shadow: 0 0 0 1px var(--bad), 0 0 16px var(--bad); animation: glow 1.6s ease-in-out infinite; }
+  #roster .pill.sel { box-shadow: 0 0 0 2px var(--accent), 0 6px 16px #0007; }
+  #roster .pill.gone { opacity: .55; }
+  #roster .divider { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--muted); opacity: .5; }
+  .star { color: #ffd84a; margin-right: 3px; text-shadow: 0 0 6px #ffd84a99; font-family: "Segoe UI Symbol", sans-serif; }
+  /* the key: what each colour and word means */
+  #legend { position: absolute; left: 14px; bottom: 46px; z-index: 5; background: var(--pill-bg, var(--empty-bg)); border: var(--chip-border);
+            border-radius: var(--radius); padding: 8px 12px; font-size: 12px; color: var(--pill-text, var(--text)); backdrop-filter: blur(8px);
+            box-shadow: 0 3px 12px #0005; min-width: 210px; }
+  #legend h4 { margin: 0; font: var(--section-font); letter-spacing: .12em; color: var(--muted); cursor: pointer; display: flex;
+               justify-content: space-between; gap: 14px; user-select: none; }
+  #legend .rows { margin-top: 6px; }
+  #legend.closed .rows { display: none; }
+  #legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  #legend .sw { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  #legend b { color: var(--c); } #legend i { color: var(--muted); font-style: normal; }
+  /* feed filters */
+  #tabs { display: flex; gap: 4px; padding: 0 12px 6px; flex-wrap: wrap; }
+  #tabs button { padding: 3px 10px; font: 600 12px var(--font); background: var(--chip-bg); color: var(--muted); border: var(--chip-border);
+                 box-shadow: none; border-radius: var(--chip-radius); }
+  #tabs button.on { background: var(--accent); color: var(--accent-text); }
+  #tabs button .n { opacity: .7; margin-left: 4px; font-size: 11px; }
+  /* ---------- the side panel's views: activity, tasks, sessions, usage, projects, system, memory ---------- */
+  #views { display: flex; gap: 2px; padding: 8px 10px 0; overflow-x: auto; scrollbar-width: none; flex: none; border-bottom: var(--border); }
+  #views::-webkit-scrollbar { display: none; }
+  #views button { flex: none; padding: 6px 9px 7px; font: 700 12px var(--font); letter-spacing: .03em; background: none; color: var(--muted);
+                  border: none; border-bottom: 3px solid transparent; border-radius: 0; box-shadow: none; transform: none; }
+  #views button:hover { color: var(--text); }
+  #views button.on { color: var(--accent); border-bottom-color: var(--accent); }
+  #views button .n { margin-left: 4px; padding: 0 5px; border-radius: 8px; background: var(--accent); color: var(--accent-text); font-size: 10px; }
+  #views button { padding: 6px 7px 7px; }
+  #panel .ptools { display: flex; justify-content: flex-end; gap: 6px; margin: 6px 0 -10px; } #panel .ptools form { margin: 0; }
+  #panel .grow { padding: 2px 8px; font-size: 13px; background: var(--chip-bg); color: var(--muted);
+                 border: var(--chip-border); box-shadow: none; border-radius: var(--chip-radius); }
+  main:has(aside.big) { grid-template-columns: 1fr min(760px, 62vw); }
+  body.wide #views, body.wide #panel { display: none !important; }
+  #view-feed { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+  #panel { flex: 1; overflow-y: auto; padding: 4px 12px 16px; display: none; color: var(--text); }
+  aside.panel #panel { display: block; } aside.panel #view-feed { display: none; }
+  #panel h3 { margin: 14px 2px 6px; font: var(--section-font); letter-spacing: .12em; color: var(--muted); display: flex; gap: 2px 8px; align-items: baseline; flex-wrap: wrap; }
+  #panel h3 small { font: 600 11px var(--font); letter-spacing: 0; text-transform: none; opacity: .8; margin-left: auto; }
+  #panel .card { padding: 9px 11px; margin: 6px 0; border-radius: var(--item-radius); background: var(--item-bg); color: var(--item-text);
+                 box-shadow: var(--item-shadow); border-left: 4px solid var(--c, var(--line)); font-size: 13px; word-wrap: break-word; }
+  #panel .card.click { cursor: pointer; } #panel .card.click:hover { filter: brightness(1.12); }
+  #panel .card .top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #panel .card .top b { font-size: 14px; }
+  #panel .meta, #panel .card .meta { color: var(--item-meta); font-size: 11.5px; }
+  #panel .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  #panel .tag { padding: 0 7px; border-radius: 8px; font-size: 10.5px; font-weight: 800; background: var(--c, var(--accent)); color: var(--accent-text);
+                text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+  #panel .tag.soft { background: none; color: var(--item-meta); box-shadow: inset 0 0 0 1px var(--item-meta); }
+  #panel .dotc { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); flex: none; }
+  #panel .live { animation: pulse 1.4s ease-in-out infinite; }
+  #panel .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(78px, 1fr)); gap: 6px; margin: 8px 0 4px; }
+  #panel .kpi { padding: 8px 10px; border-radius: var(--item-radius); background: var(--item-bg); color: var(--item-text); box-shadow: var(--item-shadow); }
+  #panel .kpi b { display: block; white-space: nowrap; font-size: 20px; line-height: 1.15; color: var(--c, var(--item-text)); }
+  #panel .kpi span { color: var(--item-meta); font-size: 11px; }
+  #panel .bar { height: 8px; border-radius: 6px; background: var(--line); overflow: hidden; margin: 5px 0 2px; }
+  #panel .bar i { display: block; height: 100%; background: var(--c, var(--accent)); border-radius: 6px; box-shadow: 0 0 8px var(--c, var(--accent)); transition: width .6s; }
+  #panel .chart { display: flex; align-items: flex-end; gap: 6px; height: 110px; padding: 8px 4px 0; }
+  #panel .chart .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; gap: 1px; position: relative; }
+  #panel .chart .col i { display: block; border-radius: 3px 3px 0 0; min-height: 0; }
+  #panel .chart .col em { position: absolute; bottom: -17px; left: 0; right: 0; text-align: center; font: 600 10.5px var(--font); color: var(--muted); font-style: normal; }
+  #panel .key { display: flex; gap: 12px; margin: 22px 2px 0; font-size: 11.5px; color: var(--muted); }
+  #panel .key .faint::before { opacity: .4; }
+  #panel .key span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--c); margin-right: 5px; }
+  #panel table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: var(--item-bg); color: var(--item-text);
+                 border-radius: var(--item-radius); box-shadow: var(--item-shadow); overflow: hidden; margin: 6px 0; }
+  #panel td, #panel th { padding: 4px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+  #panel th { color: var(--item-meta); font-weight: 700; font-size: 11px; }
+  #panel td.num, #panel th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  #panel tr.mine td:first-child { color: var(--accent); font-weight: 700; }
+  #panel details summary { cursor: pointer; list-style: none; } #panel details summary::-webkit-details-marker { display: none; }
+  #panel details summary::before { content: "\25B8"; display: inline-block; margin-right: 6px; transition: transform .15s; color: var(--item-meta); }
+  #panel details[open] summary::before { transform: rotate(90deg); }
+  #panel pre { white-space: pre-wrap; font: 12px/1.45 var(--font); margin: 6px 0 0; max-height: 300px; overflow-y: auto; padding: 8px;
+               background: var(--pre-bg); border: var(--pre-border); border-radius: 6px; color: var(--item-text); }
+  #panel ul { margin: 4px 0 0; padding-left: 18px; } #panel li { margin: 2px 0; }
+  #panel .none { color: var(--muted); font-size: 12.5px; padding: 6px 2px; }
+  #panel .err { color: var(--bad); font-size: 12px; }
+  #panel a { color: var(--accent); }
+  aside.big #panel .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+  #claude-chip { cursor: pointer; display: none; align-items: center; gap: 6px; }
+  #claude-chip .mini { width: 46px; height: 6px; border-radius: 4px; background: var(--line); overflow: hidden; display: inline-block; }
+  #claude-chip .mini i { display: block; height: 100%; background: var(--c, var(--good)); }
+  body.village #panel .card, body.village #panel .kpi { border: 3px solid #c9a36a; border-left-width: 6px; }
+  body.village #panel tr.mine td:first-child { color: #b34a00; }
+  body.village #panel h3 { color: #fff1c9; text-shadow: 0 2px 0 #5a3410; }
+  body.village #views button { color: #f3dfb0; } body.village #views button.on { color: #ffcf3a; text-shadow: 0 2px 0 #5a3410; }
+  body.hud #panel .card, body.hud #panel .kpi { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
+  body.hud #views button, body.command #views button { text-transform: uppercase; letter-spacing: .1em; font-size: 11px; }
+  body.matrix #panel .card::before { content: "> "; color: var(--muted); }
+  body.synthwave #panel .kpi b { text-shadow: 0 0 10px var(--c, #ff2bd6); }
+  @media (max-width: 900px) { main:has(aside.big) { grid-template-columns: 1fr; } #panel .ptools { display: none; }
+  }
+  .item .dup { margin-left: 6px; padding: 0 6px; border-radius: 8px; background: var(--accent); color: var(--accent-text); font-size: 10.5px; font-weight: 800; }
+  .item .who-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: var(--c); box-shadow: 0 0 5px var(--c); }
+  .item { animation: slidein .25s ease-out; } @keyframes slidein { from { opacity: 0; transform: translateX(10px); } }
+  #drawer.open { animation: pop .2s ease-out; } @keyframes pop { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+  @media (max-width: 900px) { #legend { bottom: 12px; } #hint { display: none; } }
+  @media (max-width: 600px) {   /* phones: a compact header, short labels, more room for the map */
+    header { padding: 8px 12px; gap: 8px; } header h1 { font-size: 15px; letter-spacing: .06em; }
+    .chips { gap: 5px; } .chip { font-size: 11px; padding: 2px 8px; }
+    .chip:has(#working) { display: none; }
+    .lbl3d .doing { display: none; } .lbl3d .name { font-size: 12px; } .lbl3d .state { font-size: 10.5px; }
+    .lbl3d .bubble { width: 22px; height: 22px; line-height: 19px; font-size: 12px; border-width: 1.5px; }
+    #legend { font-size: 11px; min-width: 0; padding: 6px 10px; } #roster .pill { font-size: 11.5px; padding: 3px 9px 3px 7px; }
+    main { grid-template-rows: 62% 38%; } footer { padding: 8px 12px; }
+  }
   @media (max-width: 900px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } aside { border-left: none; border-top: var(--border); } }
 
   /* ---------- theme: Command Center (default): a tactical war room, amber on gunmetal ---------- */
@@ -160,6 +282,11 @@
   body.village .label, body.village .sub { paint-order: stroke; stroke: #3b2208; stroke-width: 3px; stroke-linejoin: round; }
   body.village button.danger { border-color: #8f1f15; box-shadow: 0 4px 0 #8f1f15; }
   body.village .themes button:not(.on) { color: #f3dfb0; box-shadow: none; border: none; }
+  body.village { --pill-bg: #f6e6bfee; --pill-text: #4a2c0a; }
+  body.village #roster .pill { border: 3px solid #7d4a1b; box-shadow: 0 3px 0 #7d4a1b; font-weight: 800; }
+  body.village #legend { border: 3px solid #7d4a1b; } body.village #legend h4, body.village #legend i { color: #8a5a2b; }
+  body.village #legend b, body.village #roster .pill .st { color: #4a2c0a; }
+  body.village #roster .pill .dot, body.village #legend .sw { border: 2px solid #4a2c0a; }
 
   /* ---------- theme: Stark HUD ---------- */
   body.hud {
@@ -295,22 +422,109 @@
   }
   body.aurora button.danger, body.aurora button.good { color: #fff; }
 
+  /* ---------- theme: Zen Garden (dusk in a Japanese garden; the one light theme: ink on rice paper, vermilion accents) ---------- */
+  body.zen {
+    --font: "Zen Kaku Gothic New", "Segoe UI", sans-serif; --bg: #f4ece0; --text: #2b2522; --muted: #7a6a5e; --accent: #c8372d; --accent-text: #fff8f0;
+    --good: #4f8a3c; --bad: #c8372d; --you: #a8741c; --msg: #8a4a9a; --line: #e2d4bf;
+    --title-font: 800 22px "Shippori Mincho", serif; --title-spacing: .14em; --title-shadow: none; --section-font: 800 13px "Shippori Mincho", serif;
+    --border: 1px solid #dccbb2; --header-bg: linear-gradient(180deg, #fffaf1, #f1e6d3); --chip-border: 1px solid #d8c6aa;
+    --chip-radius: 3px; --chip-bg: #fffaf1; --map-bg: linear-gradient(180deg, #c99abb 0, #f6b9a2 38%, #ffd9b0 52%, #e9dcc3 53%, #e2d3b6 100%);
+    --empty-text: #4a3c32; --empty-bg: #fffaf1e6; --panel: #f8f1e5; --radius: 4px; --radius-lg: 6px;
+    --approval-border: 1px solid #c8372d; --approval-bg: #fde9e2; --item-radius: 2px; --item-bg: #fffbf4; --item-text: #2b2522;
+    --item-meta: #8a7a6c; --item-shadow: 0 1px 0 #e2d4bf; --item-jarvis-bg: #fbeee4; --footer-bg: #f1e6d3; --input-bg: #fffdf8;
+    --input-border: 1px solid #d0bc9c; --input-text: #2b2522; --focus: #c8372d33; --placeholder: #a8988a;
+    --btn-bg: #c8372d; --btn-text: #fff8f0; --btn-border: 1px solid #a82a22; --btn-shadow: 0 2px 0 #8a1f18; --btn-danger: #6a2a2a; --btn-good: #4f7a3a;
+    --drawer-bg: #fffaf1f5; --drawer-border: 1px solid #d0bc9c; --drawer-text: #2b2522; --drawer-muted: #7a6a5e;
+    --drawer-shadow: 0 12px 30px #5a3a2a33; --drawer-title-font: 800 22px "Shippori Mincho", serif; --pre-bg: #fbf4e8; --pre-border: 1px solid #e2d4bf;
+    --step-line: #e2d4bf; --node-label: #2b2522; --node-sub: #6d5e52; --node-font: 800 14px "Shippori Mincho", serif;
+    --pill-bg: #fffaf1ee; --pill-text: #2b2522;
+  }
+  body.zen header { border-bottom: 3px solid #c8372d; }
+  body.zen header h1::before { content: "\26E9"; margin-right: 10px; color: #c8372d; font-family: "Segoe UI Symbol", sans-serif; }
+  body.zen button.danger, body.zen button.good { color: #fff8f0; border-color: transparent; }
+  body.zen .themes select option { background: #fffaf1; color: #2b2522; }
+  body.zen .lbl3d .name { background: #fffaf1ee; color: #2b2522; text-shadow: none; border: 1px solid #d8c6aa; border-left: 3px solid #c8372d; border-radius: 2px; }
+  body.zen .lbl3d .state, body.zen .lbl3d .doing { background: #fffaf1d9; text-shadow: none; }
+  body.zen .lbl3d .doing { color: #5a4a3e; }
+  body.zen .lbl3d .state { color: #2b2522; border-left: 3px solid var(--c); border-radius: 2px; }
+  body.zen .msg3d { background: #fffaf1; color: #2b2522; box-shadow: 0 3px 10px #5a3a2a33; }
+  body.zen #legend b, body.zen #roster .pill .st { color: #2b2522; }
+  body.zen #roster .pill { box-shadow: 0 2px 8px #5a3a2a22; }
+  body.zen #hint { color: #4a3c32; }
+
+  /* ---------- theme: Clockwork Workshop (steampunk: brass, copper and gaslight) ---------- */
+  body.clockwork {
+    --font: "Special Elite", "Courier New", monospace; --bg: #140d07; --text: #f1dfbf; --muted: #b0905e; --accent: #d9a441; --accent-text: #2a1a08;
+    --good: #a8e06a; --bad: #ff5a45; --you: #ffcf6a; --msg: #f0bf75; --line: #4a3420;
+    --title-font: 25px "IM Fell English SC", Georgia, serif; --title-spacing: .08em; --title-shadow: 0 2px 0 #000, 0 0 12px #d9a44155;
+    --section-font: 15px "IM Fell English SC", Georgia, serif;
+    --border: 1px solid #4a3420; --header-bg: linear-gradient(180deg, #3a2614, #1f140b); --chip-border: 1px solid #7a5a2a;
+    --chip-radius: 3px; --chip-bg: #24170c; --map-bg: radial-gradient(circle at 50% 58%, #4a311c 0, #1a110a 72%);
+    --empty-text: #f1dfbf; --empty-bg: #24170ccc; --panel: #1b120a; --radius: 4px; --radius-lg: 8px;
+    --approval-border: 1px solid #ff5a45; --approval-bg: #2e1008; --item-radius: 3px; --item-bg: #26190e; --item-text: #f1dfbf;
+    --item-meta: #a88a62; --item-shadow: inset 0 0 0 1px #3a2814; --item-jarvis-bg: #33220f; --footer-bg: #1b120a; --input-bg: #120b05;
+    --input-border: 1px solid #7a5a2a; --input-text: #f1dfbf; --focus: #d9a44133; --placeholder: #7a6040;
+    --btn-bg: linear-gradient(180deg, #ecc66a, #a8782a); --btn-text: #2a1a08; --btn-border: 1px solid #6a4a1a;
+    --btn-shadow: inset 0 1px 0 #fff4, 0 2px 0 #3a2410; --btn-danger: #8a2a1a; --btn-good: #5a7a2a;
+    --drawer-bg: #1f140bf2; --drawer-border: 2px solid #b8893a; --drawer-text: #f1dfbf; --drawer-muted: #b0905e;
+    --drawer-shadow: 0 0 0 4px #1f140b, 0 0 0 5px #7a5a2a, 0 14px 34px #000c; --drawer-title-font: 24px "IM Fell English SC", Georgia, serif;
+    --pre-bg: #120b05; --pre-border: 1px solid #4a3420; --step-line: #4a3420; --node-label: #ffeccb; --node-sub: #e0c08a;
+    --node-font: 15px "IM Fell English SC", Georgia, serif;
+  }
+  body.clockwork header { border-bottom: 3px double #b8893a; }
+  body.clockwork header h1::before { content: "\2699"; margin-right: 10px; font-family: "Segoe UI Symbol", sans-serif; }
+  body.clockwork button.danger, body.clockwork button.good { color: #f1dfbf; }
+  body.clockwork .item { border-left-width: 3px; }
+  body.clockwork .lbl3d .name { border: 1px solid #b8893a; border-radius: 3px; background: #1f140bd9; }
+  body.clockwork #roster .pill { border: 1px solid #b8893a; box-shadow: inset 0 1px 0 #ffffff14, 0 3px 10px #0007; }
+
+  /* ---------- theme: Mars Colony (red dust, white habitats, mission-control orange) ---------- */
+  body.mars {
+    --font: "Titillium Web", "Segoe UI", sans-serif; --bg: #1c0d08; --text: #f6e3d3; --muted: #c08a6e; --accent: #ff6a2b; --accent-text: #1c0800;
+    --good: #6dff8a; --bad: #ff3355; --you: #ffd36b; --msg: #9fe8ff; --line: #4a2216;
+    --title-font: 700 19px "Oxanium", var(--font); --title-spacing: .2em; --title-shadow: 0 0 12px #ff6a2b66; --section-font: 700 12px "Oxanium", var(--font);
+    --border: 1px solid #4a2216; --header-bg: linear-gradient(180deg, #3a170c, #1c0d08); --chip-border: 1px solid #6a3020;
+    --chip-radius: 6px; --chip-bg: #24100a; --map-bg: linear-gradient(180deg, #7a5a52 0, #c7906a 30%, #e6b48a 46%, #b5552e 47%, #6a2a16 100%);
+    --empty-text: #f6e3d3; --empty-bg: #24100acc; --panel: #1f0f09; --radius: 6px; --radius-lg: 10px;
+    --approval-border: 1px solid #ff3355; --approval-bg: #2e0a10; --item-radius: 5px; --item-bg: #2a140c; --item-text: #f6e3d3;
+    --item-meta: #c08a6e; --item-shadow: inset 0 0 0 1px #3a1a10; --item-jarvis-bg: #34180e; --footer-bg: #1f0f09; --input-bg: #140805;
+    --input-border: 1px solid #6a3020; --input-text: #f6e3d3; --focus: #ff6a2b33; --placeholder: #8a5a44;
+    --btn-bg: #ff6a2b; --btn-text: #1c0800; --btn-border: 1px solid #ff8a55; --btn-shadow: 0 0 12px #ff6a2b44; --btn-danger: #8a1a2a; --btn-good: #2a7a44;
+    --drawer-bg: #1f0f09f0; --drawer-border: 1px solid #ff6a2b88; --drawer-text: #f6e3d3; --drawer-muted: #c08a6e;
+    --drawer-shadow: 0 0 34px #ff6a2b22; --drawer-title-font: 700 20px "Oxanium", var(--font); --pre-bg: #140805; --pre-border: 1px solid #4a2216;
+    --step-line: #4a2216; --node-label: #fff; --node-sub: #ffd9c4; --node-font: 700 14px "Oxanium", var(--font);
+  }
+  body.mars header { border-bottom: 3px solid #ff6a2b; box-shadow: 0 3px 0 #f6e3d322; }
+  body.mars button.danger, body.mars button.good { color: #fff; }
+  body.mars .lbl3d .name { text-transform: uppercase; letter-spacing: .08em; font-size: 13.5px; border-bottom: 2px solid #ff6a2b; border-radius: 4px 4px 0 0; }
+  body.mars #roster .pill { text-transform: uppercase; letter-spacing: .05em; font-size: 12px; }
+  @media (max-width: 600px) { body.mars .lbl3d .name { font-size: 11px; letter-spacing: .03em; } body.mars #roster .pill { font-size: 11px; letter-spacing: 0; } }
+
   /* what's being said, riding along a message beam */
-  .msg3d { pointer-events: none; width: max-content; max-width: 240px; white-space: normal; text-align: center; font: 12px/1.35 var(--font);
+  .msg3d { pointer-events: none; width: max-content; max-width: 200px; white-space: normal; text-align: center; font: 12px/1.35 var(--font);
            padding: 4px 9px; border-radius: 8px; color: #fff; background: #000c; border: 1px solid var(--c); box-shadow: 0 0 14px var(--c); }
   body.village .msg3d { background: #fff4d6; color: #4a2c0a; border: 2px solid #7d4a1b; box-shadow: 0 3px 0 #7d4a1b; font-weight: 800; }
   body.hud .item { clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); }
+  body.hud #roster .pill, body.hud #legend { clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px)); }
+  body.hud #roster .pill { text-transform: uppercase; letter-spacing: .08em; font-size: 11.5px; }
+  body.command #roster .pill { border-left: 3px solid var(--c); text-transform: uppercase; letter-spacing: .05em; }
+  body.matrix #roster .pill::before { content: "["; color: var(--muted); } body.matrix #roster .pill::after { content: "]"; color: var(--muted); }
+  body.synthwave #roster .pill { box-shadow: 0 0 0 1px #ff2bd655, 0 0 14px #ff2bd633; }
+  body.galaxy #roster .pill, body.aurora #roster .pill, body.abyss #roster .pill { border-radius: 999px; }
+  body.forge #roster .pill { font-family: "Cinzel", serif; font-weight: 800; }
 </style>
 </head>
 <body class="command">
 <header>
   <h1 id="title">J.A.R.V.I.S. &middot; COMMAND CENTER</h1>
   <div class="chips">
+    <span class="chip" id="claude-chip" title="How much of your Claude plan is used (click for details)"></span>
     <span class="chip" id="conn"><span class="dot"></span>connecting</span>
     <span class="chip"><span id="agents-word">agents</span> <b id="count">0</b>/<b id="max">5</b></span>
     <span class="chip"><span id="working-word">working</span> <b id="working">0</b></span>
     <span class="chip"><span id="needs-word">needs you</span> <b id="needs">0</b></span>
-    <label class="themes" title="Theme (keys 1-9)"><select id="themes"></select></label>
+    <span class="chip" title="Standing specialists: always on, not counted in the limit"><span class="star">★</span><b id="standing">0</b> always on</span>
+    <label class="themes" title="Theme (keys 1-0, [ and ] to cycle)"><select id="themes"></select></label>
     <div class="themes"><button id="dim" title="Switch between the 3D and 2D view">3D</button>
       <button id="wide" title="Expand the map to fill the window (F); double-click for full screen">Expand</button></div>
   </div>
@@ -318,15 +532,22 @@
 <main>
   <section id="map">
     <div id="scene3d"></div>
-    <div id="hint">drag to orbit · scroll to zoom · click a unit · right-click for actions · 1-6 themes · F expand · space spin · esc reset</div>
+    <div id="roster"></div>
+    <div id="legend"></div>
+    <div id="hint">drag to orbit · scroll to zoom · click an agent · right-click for actions · 1-0 [ ] themes · L key · F expand · space spin · esc reset</div>
     <svg id="svg"></svg>
     <div class="empty" id="empty"></div>
     <div id="drawer"></div>
   </section>
   <aside>
+    <nav id="views"></nav>
     <div id="approvals"></div>
-    <h2 id="feed-title">ACTIVITY</h2>
-    <div id="feed"></div>
+    <div id="view-feed">
+      <h2 id="feed-title">ACTIVITY</h2>
+      <div id="tabs"></div>
+      <div id="feed"></div>
+    </div>
+    <div id="panel"></div>
   </aside>
 </main>
 <footer>
@@ -351,7 +572,8 @@ const VERBS = { web_search: "searching the web", read_file: "reading a file", li
   tradelog_summary: "crunching your trades", tradelog_trades: "reading your trades", portfolio_holdings: "pricing your portfolio",
   portfolio_update: "updating your holdings", stock_quotes: "checking prices", notebook_add: "taking notes", notebook_rewrite: "tidying its notes",
   find_jobs: "searching for jobs", read_job_posting: "reading a job posting", track_job: "updating the job tracker",
-  job_tracker: "checking your applications" };
+  job_tracker: "checking your applications", travel_search_links: "searching flights and stays",
+  read_travel_page: "reading a travel page", save_trip: "saving a trip", saved_trips: "checking your trips" };
 
 // ---------- helpers ----------
 function api(path, body) {
@@ -374,12 +596,22 @@ function spin(parent, seconds, reverse) {
                            dur: seconds + "s", repeatCount: "indefinite" }, parent);
 }
 
+// What each status means, in plain words (themes have their own names for them)
+const PLAIN = { starting: "starting up", working: "working", waiting: "waiting for a message", "needs you": "needs your answer",
+                done: "finished", stopped: "stopped", failed: "ran into a problem" };
+const ORDER = ["needs you", "working", "starting", "waiting", "done", "failed", "stopped"];
+const isStanding = a => a?.info?.kind === "standing";
+
 // ---------- themes ----------
 // Each theme sets the words, the status colours, how nodes are drawn, and what flies along a message.
 const ROLE_ICONS = [[/research|find|search|scout/i, "🏹"], [/writ|draft|blurb|copy/i, "🧙"], [/review|check|edit|verif|qa/i, "🛡️"],
                     [/code|build|dev|engineer/i, "🔨"], [/plan|strateg|lead|manag/i, "🗺️"], [/data|analy|number|stat/i, "📊"],
                     [/design|art|visual/i, "🎨"], [/email|mail|message|comm/i, "🕊️"]];
 const roleIcon = info => (ROLE_ICONS.find(([re]) => re.test(info.role + " " + info.name)) || [0, "⚔️"])[1];
+const gearPoints = (r, teeth) => Array.from({ length: teeth * 4 }, (_, i) => {
+  const a = (Math.floor(i / 4) + [0, .18, .45, .63][i % 4]) / teeth * Math.PI * 2, rad = i % 4 === 1 || i % 4 === 2 ? r : r * .84;
+  return `${Math.cos(a) * rad},${Math.sin(a) * rad}`;
+}).join(" ");
 const hexPoints = r => Array.from({ length: 6 }, (_, i) => { const a = Math.PI / 3 * i + Math.PI / 6; return `${Math.cos(a) * r},${Math.sin(a) * r}`; }).join(" ");
 // the 2D look shared by the glowing themes: a shape outlined in the status colour with the name inside
 function neonTheme({ words, status, words2, fill, done, glow, shape }) {
@@ -606,6 +838,47 @@ const THEMES = {
     shape: (g, kind, r, attrs) => kind === "user" ? el("polygon", { points: `0,${-r} ${r},${-r * .1} ${r * .8},${r * .8} ${-r * .8},${r * .8} ${-r},${-r * .1}`, ...attrs }, g)
       : el("polygon", { points: `0,${-r * 1.15} ${r * .6},0 0,${r * 1.15} ${-r * .6},0`, ...attrs }, g),   // a crystal
   }),
+
+  zen: neonTheme({
+    words: { title: "JARVIS · ZEN GARDEN", jarvis: "Jarvis", user: "Tea House", agents: "lanterns", working: "glowing",
+             needs: "await you", feed: "GARDEN JOURNAL", send: "Send", placeholder: "Ask Jarvis, calmly...",
+             empty: 'The garden is still. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "bows and asks your OK" },
+    status: { starting: "#d9761c", working: "#d9761c", waiting: "#5a6fae", "needs you": "#c8372d", done: "#4f8a3c", stopped: "#8a8580", failed: "#c8372d" },
+    words2: { starting: "kindling", working: "glowing", waiting: "resting", "needs you": "awaits you", done: "in bloom",
+              stopped: "put out", failed: "fallen" },
+    fill: "#fffaf1", done: "#4f8a3c",
+    shape: (g, kind, r, attrs) => kind === "jarvis" ? el("polygon", { points: `0,${-r} ${r * .55},${-r * .45} ${r * .4},${-r * .45} ${r * .95},${r * .2} ${r * .7},${r * .2} ${r * .85},${r * .8} ${-r * .85},${r * .8} ${-r * .7},${r * .2} ${-r * .95},${r * .2} ${-r * .4},${-r * .45} ${-r * .55},${-r * .45}`, ...attrs }, g)   // a pagoda
+      : kind === "user" ? el("polygon", { points: `0,${-r * .8} ${r * 1.1},${-r * .1} ${r * .8},${-r * .1} ${r * .8},${r * .75} ${-r * .8},${r * .75} ${-r * .8},${-r * .1} ${-r * 1.1},${-r * .1}`, ...attrs }, g)
+      : el("rect", { x: -r * 1.05, y: -r * .75, width: r * 2.1, height: r * 1.5, rx: r * .55, ...attrs }, g),   // a paper lantern
+  }),
+
+  clockwork: neonTheme({
+    words: { title: "JARVIS · CLOCKWORK WORKSHOP", jarvis: "JARVIS", user: "Workbench", agents: "automatons", working: "ticking",
+             needs: "need you", feed: "WORKSHOP LEDGER", send: "Engage", placeholder: "Wire an order to Jarvis...",
+             empty: 'The workshop is still. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "requests your stamp" },
+    status: { starting: "#ffc46a", working: "#ffb347", waiting: "#6fc2c9", "needs you": "#ff4a3a", done: "#a8e06a", stopped: "#5a4a3e", failed: "#ff4a3a" },
+    words2: { starting: "winding up", working: "ticking", waiting: "idling", "needs you": "needs you", done: "chimed",
+              stopped: "unwound", failed: "jammed" },
+    fill: "#26190e", done: "#a8e06a", glow: true,
+    shape: (g, kind, r, attrs) => kind === "user" ? el("rect", { x: -r * .9, y: -r * .65, width: r * 1.8, height: r * 1.3, rx: 6, ...attrs }, g)
+      : el("polygon", { points: gearPoints(r, kind === "jarvis" ? 16 : 10), ...attrs }, g),
+  }),
+
+  mars: neonTheme({
+    words: { title: "JARVIS · MARS COLONY", jarvis: "HAB COMMAND", user: "Your Rover", agents: "modules", working: "online",
+             needs: "need you", feed: "MISSION CONTROL", send: "Uplink", placeholder: "Uplink an order to Jarvis...",
+             empty: 'The colony is quiet. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "requests a go / no-go" },
+    status: { starting: "#3ee0ff", working: "#3ee0ff", waiting: "#c6b8ff", "needs you": "#ff3355", done: "#6dff8a", stopped: "#6a5a52", failed: "#ff3355" },
+    words2: { starting: "landing", working: "online", waiting: "standby", "needs you": "awaiting go", done: "mission success",
+              stopped: "powered down", failed: "signal lost" },
+    fill: "#2a140c", done: "#6dff8a", glow: true,
+    shape: (g, kind, r, attrs) => kind === "jarvis" ? el("path", { d: `M${-r} ${r * .55} A${r} ${r} 0 0 1 ${r} ${r * .55} Z`, ...attrs }, g)   // the dome
+      : kind === "user" ? el("rect", { x: -r, y: -r * .5, width: r * 2, height: r, rx: r * .25, ...attrs }, g)
+      : el("polygon", { points: hexPoints(r), ...attrs }, g),
+  }),
 };
 let T = THEMES.command, themeKey = "command";
 
@@ -634,6 +907,7 @@ function applyTheme(key, save) {
   document.getElementById("empty").textContent = w.empty;
   document.getElementById("themes").value = key;
   for (const card of document.querySelectorAll(".approval .who")) card.textContent = `${card.dataset.who} ${w.approval}`;
+  renderLegend(); renderTabs();
   if (save) api("/theme", { theme: key });
   scene3d?.setTheme(key, agents);
   render(); refreshDrawer();
@@ -647,22 +921,68 @@ function size() { const r = svg.getBoundingClientRect(); return { w: r.width || 
 function positions() {
   const { w, h } = size();
   const pos = { jarvis: { x: w / 2, y: h / 2 + 20 }, user: { x: w / 2, y: Math.max(80, h / 2 - Math.min(w, h) * 0.38) } };
-  const ids = Object.keys(agents);
   const rx = Math.max(90, Math.min(w / 2 - 110, Math.min(w, h) * 0.42));
   const ry = Math.max(90, Math.min(h / 2 - 100, Math.min(w, h) * 0.34));
-  ids.forEach((id, i) => {
-    // an arc from Jarvis's right, round the bottom, to his left, keeping the top clear for the user
-    const deg = ids.length === 1 ? 90 : -20 + (220 * i) / (ids.length - 1);
+  const arc = (ids, from, to, gap, sx, sy) => ids.forEach((id, i) => {
+    const mid = (from + to) / 2, span = to - from - gap;
+    let deg = ids.length === 1 ? from + span * .7 : from + (span * i) / (ids.length - 1);
+    if (deg > mid - gap / 2) deg += gap;
     const a = deg * Math.PI / 180;
-    pos[id] = { x: w / 2 + rx * Math.cos(a), y: h / 2 + 20 + ry * Math.sin(a) };
+    pos[id] = { x: w / 2 + rx * sx * Math.cos(a), y: h / 2 + 20 + ry * sy * Math.sin(a) };
   });
+  const ids = Object.keys(agents), standing = ids.filter(id => isStanding(agents[id]));
+  arc(ids.filter(id => !standing.includes(id)), 0, 180, 30, 1, 1);   // the crew: round the bottom, middle left clear
+  arc(standing, 205, 335, 44, 1.05, 1);                              // always-on specialists: up top, either side of you
   return pos;
 }
+// ---------- the roster and the key ----------
+function renderRoster() {
+  const list = Object.entries(agents).sort(([, a], [, b]) =>
+    (isStanding(a) - isStanding(b)) || ORDER.indexOf(a.info.status) - ORDER.indexOf(b.info.status));
+  let html = "", before = null;
+  for (const [id, a] of list) {
+    const s = a.info.status, color = T.status[s] || T.status.working, standing = isStanding(a);
+    if (before === false && standing) html += '<span class="divider"></span>';
+    before = standing;
+    const cls = ["pill", ["working", "starting"].includes(s) && "busy", s === "needs you" && "needs",
+                 ["done", "stopped", "failed"].includes(s) && "gone", selected === id && "sel"].filter(Boolean).join(" ");
+    html += `<button class="${cls}" data-id="${esc(id)}" style="--c:${color}" title="${esc(a.info.role)}: ${esc(PLAIN[s] || s)}` +
+            `${standing ? " (always on)" : ""}"><span class="dot"></span>${standing ? '<span class="star">★</span>' : ""}` +
+            `${esc(a.info.name)} <span class="st">${esc(T.statusWord(s))}</span></button>`;
+  }
+  document.getElementById("roster").innerHTML = html;
+}
+document.getElementById("roster").addEventListener("click", ev => {
+  const pill = ev.target.closest(".pill"); if (!pill || !agents[pill.dataset.id]) return;
+  openDrawer(pill.dataset.id); scene3d?.focus(pill.dataset.id);
+});
+function renderLegend() {
+  const box = document.getElementById("legend");
+  const rows = ["working", "waiting", "needs you", "done", "failed"].map(s =>
+    `<div class="row" style="--c:${T.status[s]}"><span class="sw"></span><b>${esc(T.statusWord(s))}</b><i>= ${esc(PLAIN[s])}</i></div>`).join("");
+  box.innerHTML = `<h4 title="Show or hide (L)">KEY <span>${box.classList.contains("closed") ? "+" : "–"}</span></h4><div class="rows">${rows}
+    <div class="row"><span class="star">★</span><i>always-on specialist</i></div>
+    <div class="row" style="--c:${getComputedStyle(document.body).getPropertyValue("--msg").trim() || "#fff"}"><span class="sw"></span><i>beam = a message being sent</i></div></div>`;
+}
+function toggleLegend(open = document.getElementById("legend").classList.contains("closed")) {
+  document.getElementById("legend").classList.toggle("closed", !open);
+  try { localStorage.setItem("jarvis-legend", open ? "1" : "0"); } catch (e) {}
+  renderLegend();
+}
+document.getElementById("legend").addEventListener("click", ev => { if (ev.target.closest("h4")) toggleLegend(); });
+try {   // closed if you closed it, and to start with on a phone (the map's small there)
+  const saved = localStorage.getItem("jarvis-legend");
+  if (saved === "0" || (saved === null && innerWidth < 700)) document.getElementById("legend").classList.add("closed");
+} catch (e) {}
+
 // ---------- 3D (scene3d.js) with the 2D map as the fallback ----------
 let scene3d = null;
 function counters() {
+  renderRoster();
+  const crew = Object.values(agents).filter(a => !isStanding(a) && a.info.kind !== "reviewer");
+  document.getElementById("standing").textContent = Object.values(agents).filter(a => isStanding(a) && !["done", "stopped", "failed"].includes(a.info.status)).length;
   const list = Object.values(agents).map(a => a.info.status);
-  document.getElementById("count").textContent = list.filter(s => !["done", "stopped", "failed"].includes(s)).length;
+  document.getElementById("count").textContent = crew.filter(a => !["done", "stopped", "failed"].includes(a.info.status)).length;
   document.getElementById("working").textContent = list.filter(s => s === "working" || s === "starting").length;
   document.getElementById("needs").textContent = list.filter(s => s === "needs you").length + document.querySelectorAll(".approval").length;
   document.getElementById("empty").style.display = Object.keys(agents).length ? "none" : "block";
@@ -713,7 +1033,7 @@ function showTip(id, x, y) {
   else if (id === "user") html = `<b>${esc(T.words.user)}</b><br>${document.querySelectorAll(".approval").length} waiting for your OK.`;
   else {
     const a = agents[id]; if (!a) return;
-    html = `<b>${esc(a.info.name)}</b> · ${esc(T.statusWord(a.info.status))}<br>${esc(a.info.role)}` +
+    html = `<b>${isStanding(a) ? "★ " : ""}${esc(a.info.name)}</b> · ${esc(T.statusWord(a.info.status))} <i>(${esc(PLAIN[a.info.status] || a.info.status)})</i><br>${esc(a.info.role)}` +
            (a.activity ? `<br><i>${esc(a.activity)}</i>` : "") + `<br>${(a.steps || []).length} steps · click to open, right-click for actions`;
   }
   tip.innerHTML = html; tip.style.display = "block";
@@ -740,11 +1060,14 @@ document.addEventListener("click", ev => { if (!ev.target.closest("#ctx")) docum
 document.addEventListener("keydown", ev => {
   if (ev.target.tagName === "INPUT") { if (ev.key === "Escape") ev.target.blur(); return; }
   if (ev.target.tagName === "SELECT") ev.target.blur();   // the shortcuts still work after using the theme menu
-  if (/^[1-9]$/.test(ev.key)) ev.preventDefault();
-  const keys = Object.keys(THEMES);
-  if (/^[1-9]$/.test(ev.key) && keys[+ev.key - 1]) applyTheme(keys[+ev.key - 1], true);
+  if (/^[0-9[\]]$/.test(ev.key)) ev.preventDefault();
+  const keys = Object.keys(THEMES), at = keys.indexOf(themeKey);
+  const pick = ev.key === "[" ? (at + keys.length - 1) % keys.length : ev.key === "]" ? (at + 1) % keys.length   // [ ] cycle
+             : /^[0-9]$/.test(ev.key) ? (+ev.key || 10) - 1 : -1;                                                   // 1-9, 0 = 10th
+  if (keys[pick]) applyTheme(keys[pick], true);
   else if (ev.key === "Escape") { closeDrawer(); scene3d?.reset(); document.getElementById("ctx").style.display = "none"; }
   else if (ev.key === "f" || ev.key === "F") toggleWide();
+  else if (ev.key === "l" || ev.key === "L") toggleLegend();
   else if (ev.key === " ") { ev.preventDefault(); scene3d?.toggleRotate(); }
   else if (ev.key === "/") { ev.preventDefault(); document.getElementById("cmd").focus(); }
 });
@@ -761,6 +1084,7 @@ function render() {
     const g = el("g", { class: "node", transform: `translate(${pos[id].x},${pos[id].y})` }, layer.nodes);
     const color = kind === "jarvis" ? T.status.working : kind === "user" ? T.status.waiting : (T.status[info.status] || T.status.working);
     const r = T.node(g, kind, info || {}, color);
+    if (kind === "agent" && info.kind === "standing") txt(g, "★", { x: r * .85, y: -r * .7, class: "star", "font-size": 18, fill: "#ffd84a" });
     if (kind === "agent") {
       txt(g, T.statusWord(info.status), { y: r + (themeKey === "village" ? 34 : themeKey === "hud" ? 44 : 22), class: "sub" });
       const doing = agents[id].activity || "";
@@ -771,11 +1095,6 @@ function render() {
   };
   place("user", "user"); place("jarvis", "jarvis");
   for (const [id, a] of Object.entries(agents)) place(id, "agent", a.info);
-  document.getElementById("empty").style.display = Object.keys(agents).length ? "none" : "block";
-  const list = Object.values(agents).map(a => a.info.status);
-  document.getElementById("count").textContent = list.filter(s => !["done", "stopped", "failed"].includes(s)).length;
-  document.getElementById("working").textContent = list.filter(s => s === "working" || s === "starting").length;
-  document.getElementById("needs").textContent = list.filter(s => s === "needs you").length + document.querySelectorAll(".approval").length;
 }
 function flyMessage(from, to, color, kind, text) {
   if (scene3d && document.body.classList.contains("three")) { scene3d.message(from, to, kind, text); return; }
@@ -815,13 +1134,38 @@ function beam2D(a, b, arc, color, dur) {
 }
 
 // ---------- feed & drawer ----------
+const TABS = [["all", "All"], ["talk", "Talk"], ["work", "Work"], ["result", "Results"], ["you", "You"]];
+const CATEGORY = { msg: "talk", jar: "talk", act: "work", res: "result", warn: "you", you: "you" };
+let feedFilter = "all";
+function shown(d) {
+  return (feedFilter === "all" || d.dataset.cat === feedFilter) && (!selected || !d.dataset.agent || d.dataset.agent === selected);
+}
+function refilter() { for (const d of document.querySelectorAll("#feed .item")) d.style.display = shown(d) ? "" : "none"; }
+function renderTabs() {
+  const counts = {};
+  for (const d of document.querySelectorAll("#feed .item")) counts[d.dataset.cat] = (counts[d.dataset.cat] || 0) + 1;
+  document.getElementById("tabs").innerHTML = TABS.map(([key, label]) =>
+    `<button data-tab="${key}" class="${feedFilter === key ? "on" : ""}">${label}${key !== "all" && counts[key] ? `<span class="n">${counts[key]}</span>` : ""}</button>`).join("");
+}
+document.getElementById("tabs").addEventListener("click", ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  feedFilter = b.dataset.tab; renderTabs(); refilter();
+  const box = document.getElementById("feed"); box.scrollTop = box.scrollHeight;
+});
 function feed(cls, meta, text, agentId) {
   const box = document.getElementById("feed");
+  const full = String(text ?? ""), [time, ...rest] = meta.split(" · "), key = `${cls}|${rest.join(" · ")}|${full}`;
+  const last = box.lastElementChild;
+  if (last && last.dataset.key === key) {   // the same thing again: count it instead of repeating it
+    last.dataset.count = +(last.dataset.count || 1) + 1;
+    last.querySelector(".meta").innerHTML = `${esc(meta)}<span class="dup">×${last.dataset.count}</span>`;
+    return;
+  }
   const d = document.createElement("div");
-  d.className = "item " + cls; d.dataset.agent = agentId || "";
-  const full = String(text ?? ""), long = full.length > 320;
-  d.innerHTML = `<div class="meta">${esc(meta)}</div><span class="txt">${esc(long ? full.slice(0, 300) + "…" : full)}</span>`
-              + (long ? ` <a href="#" class="more">show more</a>` : "");
+  d.className = "item " + cls; d.dataset.agent = agentId || ""; d.dataset.cat = CATEGORY[cls] || "work"; d.dataset.key = key;
+  const long = full.length > 320, color = agentId && agents[agentId] ? T.status[agents[agentId].info.status] : "";
+  d.innerHTML = `<div class="meta">${color ? `<span class="who-dot" style="--c:${color}"></span>` : ""}${esc(meta)}</div>` +
+                `<span class="txt">${esc(long ? full.slice(0, 300) + "…" : full)}</span>` + (long ? ` <a href="#" class="more">show more</a>` : "");
   if (long) d.querySelector(".more").onclick = ev => {
     ev.preventDefault(); const open = ev.target.textContent === "show less";
     d.querySelector(".txt").textContent = open ? full.slice(0, 300) + "…" : full;
@@ -833,8 +1177,9 @@ function feed(cls, meta, text, agentId) {
   });
   box.appendChild(d);
   while (box.children.length > 400) box.firstChild.remove();
-  if (selected && agentId && agentId !== selected) d.style.display = "none";
+  if (!shown(d)) d.style.display = "none";
   box.scrollTop = box.scrollHeight;
+  renderTabs();
 }
 function openDrawer(id) {
   // Built once per agent; refreshDrawer() updates only what changes, so a half-typed message and the buttons stay put.
@@ -843,7 +1188,7 @@ function openDrawer(id) {
     const info = agents[id].info;
     const drawer = document.getElementById("drawer");
     drawer.innerHTML = `<button class="close" onclick="closeDrawer()">&times;</button>
-      <h3>${esc(info.name)}</h3><div class="role" id="d-role"></div>
+      <h3>${isStanding(agents[id]) ? '<span class="star">★</span>' : ""}${esc(info.name)}</h3><div class="role" id="d-role"></div>
       <div class="section">TASK</div><pre>${esc(info.task)}</pre>
       <div id="d-result"></div>
       <div class="section">RECENT STEPS</div><div class="steps" id="d-steps"></div>
@@ -853,7 +1198,7 @@ function openDrawer(id) {
       </div>`;
     drawer.classList.add("open");
     document.getElementById("dm").addEventListener("keydown", e => { if (e.key === "Enter") sendDM(); });
-    for (const d of document.querySelectorAll("#feed .item")) d.style.display = (!d.dataset.agent || d.dataset.agent === id) ? "" : "none";
+    refilter(); renderRoster();
   }
   refreshDrawer();
 }
@@ -861,6 +1206,7 @@ function refreshDrawer() {
   if (!selected || !agents[selected]) return;
   const a = agents[selected], info = a.info;
   document.getElementById("d-role").innerHTML = `${esc(info.role)} &middot; <span style="color:${T.status[info.status]}">${esc(T.statusWord(info.status))}</span>
+    <span style="opacity:.75">(${esc(PLAIN[info.status] || info.status)})</span>${isStanding(a) ? " &middot; ★ always on" : ""}
     &middot; ${(a.steps || []).length || info.steps || 0} steps`;
   document.getElementById("d-result").innerHTML = info.result ? `<div class="section">RESULT</div><pre>${esc(info.result)}</pre>` : "";
   document.getElementById("d-steps").innerHTML =
@@ -869,7 +1215,7 @@ function refreshDrawer() {
 }
 function closeDrawer() {
   selected = null; document.getElementById("drawer").classList.remove("open");
-  for (const d of document.querySelectorAll("#feed .item")) d.style.display = "";
+  refilter(); renderRoster();
 }
 function sendDM() {
   const input = document.getElementById("dm"); const text = input.value.trim(); if (!text) return;
@@ -971,5 +1317,6 @@ document.getElementById("send").onclick = sendCommand;
 cmd.addEventListener("keydown", e => { if (e.key === "Enter") sendCommand(); });
 window.addEventListener("resize", render);
 </script>
+<script>{ const s = document.createElement("script"); s.src = `/panels.js?token=${encodeURIComponent(TOKEN)}`; document.body.appendChild(s); }</script>
 </body>
 </html>

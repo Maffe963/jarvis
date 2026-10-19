@@ -9,6 +9,8 @@ you're out, put it on your private Tailscale network (`tailscale serve --bg 8765
 the address Tailscale gives you. The token then stays the same across restarts (memory/dashboard_token, delete it
 to make a new one) so the link keeps working; Telegram's /dashboard sends it to your phone.
 """
+import hashlib
+import http.cookies
 import json
 import os
 import secrets
@@ -17,6 +19,7 @@ import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from dashboard import insights
 from team import approvals, client, events
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +27,12 @@ PORT = int(os.environ.get("JARVIS_DASHBOARD_PORT", "8765"))
 TOKEN_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard_token")
 HISTORY_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard_history.json")
 PUBLIC_URL = os.environ.get("JARVIS_DASHBOARD_URL", "").strip().rstrip("/")  # e.g. https://my-pc.tail1234.ts.net
+PASSWORD = os.environ.get("JARVIS_DASHBOARD_PASSWORD", "").strip()  # lets any browser sign in, without the secret link
+SESSIONS_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard_sessions.json")
+SESSION_DAYS = 30
+MAX_FAILURES = 5          # wrong passwords allowed per FAILURE_WINDOW_S from one address before it's paused
+MAX_ALL_FAILURES = 30     # from everywhere together; past that the password pauses for everyone (the /dashboard link
+FAILURE_WINDOW_S = 15 * 60  # from Telegram still works, so you're never locked out)
 
 
 def _token() -> str:
@@ -54,9 +63,10 @@ _busy = threading.Lock()
 
 
 SETTINGS_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard.json")
-STATIC = {"/scene3d.js": "text/javascript; charset=utf-8"}  # other files the page loads (fixed list, nothing else)
+STATIC = {"/scene3d.js": "text/javascript; charset=utf-8", "/panels.js": "text/javascript; charset=utf-8"}  # other files the page loads (fixed list, nothing else)
 THEMES = {"command": "Command Center", "village": "Village", "hud": "Stark HUD", "synthwave": "Synthwave",
-          "galaxy": "Deep Space", "matrix": "Mainframe", "abyss": "The Abyss", "forge": "Dragon Forge", "aurora": "Aurora"}
+          "galaxy": "Deep Space", "matrix": "Mainframe", "abyss": "The Abyss", "forge": "Dragon Forge", "aurora": "Aurora",
+          "zen": "Zen Garden", "clockwork": "Clockwork Workshop", "mars": "Mars Colony"}
 NICKNAMES = {"village": ("clash", "clash of clans", "coc", "town", "castle"),
              "hud": ("iron man", "stark", "jarvis", "hologram"),
              "command": ("default", "normal", "original", "classic", "war room", "tactical", "war table"),
@@ -65,7 +75,10 @@ NICKNAMES = {"village": ("clash", "clash of clans", "coc", "town", "castle"),
              "matrix": ("matrix", "hacker", "code", "terminal", "cyber", "digital rain"),
              "abyss": ("ocean", "underwater", "sea", "deep sea", "water", "submarine", "jellyfish"),
              "forge": ("volcano", "lava", "fire", "dragon", "fantasy", "medieval"),
-             "aurora": ("snow", "ice", "winter", "arctic", "frost", "northern lights", "frozen")}
+             "aurora": ("snow", "ice", "winter", "arctic", "frost", "northern lights", "frozen"),
+             "zen": ("japan", "japanese", "garden", "japanese garden", "sakura", "cherry blossom", "zen", "calm", "peaceful", "light"),
+             "clockwork": ("steampunk", "brass", "gears", "victorian", "clock", "workshop"),
+             "mars": ("mars", "red planet", "colony", "space base", "martian", "nasa", "rover")}
 
 
 def theme() -> str:
@@ -125,12 +138,133 @@ def _command(text: str) -> None:
         events.emit("jarvis", direction="out", text="Stopped.")
 
 
+# ---------- signing in with a password (when JARVIS_DASHBOARD_PASSWORD is set) ----------
+
+_failures: list[tuple[float, str]] = []  # (when, from which address)
+_login_lock = threading.Lock()
+
+
+def _hash(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+PASSWORD_ID = _hash("jarvis-dashboard:" + PASSWORD)[:16]  # sign-ins made with an earlier password stop working
+
+
+def _sessions() -> dict:
+    """{sha256 of a session key: {"expires", "password"}}. Only hashes are stored, so the file can't sign anyone in."""
+    try:
+        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+            found = json.load(f)
+        return {k: v for k, v in found.items() if isinstance(v, dict) and v.get("expires", 0) > time.time()}
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError, OSError):
+        return {}
+
+
+def _save_sessions(sessions: dict) -> None:
+    tmp = SESSIONS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(sessions, f)
+    os.replace(tmp, SESSIONS_FILE)  # never half-written while someone is being checked
+
+
+def _new_session() -> str:
+    key = secrets.token_urlsafe(32)
+    with _login_lock:
+        sessions = _sessions()
+        sessions[_hash(key)] = {"expires": time.time() + SESSION_DAYS * 86400, "password": PASSWORD_ID}
+        _save_sessions(sessions)
+    return key
+
+
+def _end_session(key: str) -> None:
+    with _login_lock:
+        sessions = _sessions()
+        if sessions.pop(_hash(key), None) is not None:
+            _save_sessions(sessions)
+
+
+def _check_password(given: str, address: str) -> str:
+    """'ok', 'wrong' or 'paused' (too many wrong tries lately from that address, or from everywhere)."""
+    with _login_lock:
+        now = time.time()
+        _failures[:] = [f for f in _failures if now - f[0] < FAILURE_WINDOW_S]
+        if len(_failures) >= MAX_ALL_FAILURES or sum(1 for _, a in _failures if a == address) >= MAX_FAILURES:
+            return "paused"
+        if PASSWORD and secrets.compare_digest(given.encode(), PASSWORD.encode()):
+            return "ok"
+        _failures.append((now, address))
+    time.sleep(1)  # slows guessing down
+    return "wrong"
+
+
+LOGIN_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis sign in</title><style>
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: radial-gradient(circle at 50% 40%, #12202e, #05080c);
+       font: 15px/1.4 "Segoe UI", system-ui, sans-serif; color: #dce9f5; }
+form { width: min(340px, calc(100% - 32px)); padding: 26px; border-radius: 14px; background: #0c141ccc; border: 1px solid #23415a;
+       box-shadow: 0 0 40px #4fe3ff22; }
+h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: .25em; color: #4fe3ff; } p { margin: 0 0 18px; color: #7d97ad; font-size: 13px; }
+input { width: 100%; box-sizing: border-box; padding: 11px 13px; border-radius: 8px; border: 1px solid #23415a; background: #060b10; color: #fff; font: inherit; }
+button { width: 100%; margin-top: 12px; padding: 11px; border: 0; border-radius: 8px; background: #4fe3ff; color: #021018; font: 700 15px inherit; cursor: pointer; }
+.err { color: #ff6b7d; font-size: 13px; margin-top: 10px; min-height: 18px; }
+</style></head><body><form method="post" action="/login"><h1>J.A.R.V.I.S.</h1><p>Sign in to your dashboard.</p>
+<input type="password" name="password" placeholder="Dashboard password" autofocus autocomplete="current-password">
+<button>Sign in</button><div class="err">{error}</div></form></body></html>"""
+
+
 class Handler(BaseHTTPRequestHandler):
+    def _host_ok(self) -> bool:
+        return self.headers.get("Host", "").split(":")[0].lower() in HOSTS
+
+    def _session_key(self) -> str:
+        cookie = http.cookies.SimpleCookie()
+        try:
+            cookie.load(self.headers.get("Cookie", ""))
+        except http.cookies.CookieError:
+            return ""
+        key = cookie.get("jarvis_session")
+        return key.value if key else ""
+
+    def _signed_in(self) -> bool:
+        key = self._session_key() if PASSWORD else ""
+        return bool(key) and (_sessions().get(_hash(key)) or {}).get("password") == PASSWORD_ID
+
+    def _address(self) -> str:
+        """Who's asking: behind Tailscale Funnel every request comes from this PC, with the visitor's address added."""
+        if self.client_address[0] in ("127.0.0.1", "::1"):
+            forwarded = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            return forwarded or "this PC"
+        return self.client_address[0]
+
     def _authorized(self) -> bool:
         query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         given = self.headers.get("X-Jarvis-Token") or query.get("token", [""])[0]
-        host_ok = self.headers.get("Host", "").split(":")[0].lower() in HOSTS
-        return host_ok and secrets.compare_digest(given, TOKEN)
+        if not self._host_ok():
+            return False
+        return secrets.compare_digest(given.encode(), TOKEN.encode()) or self._signed_in()
+
+    def _login(self) -> None:
+        try:
+            length = max(0, min(int(self.headers.get("Content-Length", 0) or 0), 4000))
+        except ValueError:
+            length = 0
+        form = urllib.parse.parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
+        result = _check_password(form.get("password", [""])[0], self._address())
+        if result != "ok":
+            error = ("Too many wrong tries. Wait 15 minutes, or open the link from /dashboard in Telegram."
+                     if result == "paused" else "That's not the password.")
+            if result == "wrong":
+                events.emit("jarvis", direction="out", text="Someone typed a wrong dashboard password.")
+            self._send(401, LOGIN_PAGE.replace("{error}", error).encode(), "text/html; charset=utf-8")
+            return
+        secure = "; Secure" if PUBLIC_URL.startswith("https://") else ""
+        self.send_response(303)
+        self.send_header("Set-Cookie", f"jarvis_session={_new_session()}; Path=/; HttpOnly; SameSite=Strict; "
+                                       f"Max-Age={SESSION_DAYS * 86400}{secure}")
+        self.send_header("Location", "/")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _send(self, code: int, body: bytes, kind: str) -> None:
         self.send_response(code)
@@ -145,7 +279,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if not self._authorized():
-            self._send(403, b"Open the dashboard from Jarvis (say 'open the dashboard').", "text/plain")
+            if PASSWORD and self._host_ok() and urllib.parse.urlparse(self.path).path in ("/", "/login"):
+                self._send(200, LOGIN_PAGE.replace("{error}", "").encode(), "text/html; charset=utf-8")
+            else:
+                self._send(403, b"Open the dashboard from Jarvis (say 'open the dashboard').", "text/plain")
             return
         path = urllib.parse.urlparse(self.path).path
         if path == "/":
@@ -158,6 +295,15 @@ class Handler(BaseHTTPRequestHandler):
             self._json(snapshot())
         elif path == "/events":
             self._stream()
+        elif path == "/insights":
+            tab = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("tab", [""])[0]
+            try:
+                team = (client.state() or {}) if tab in insights.SECTIONS else {}
+                self._json(insights.get(tab, team))
+            except KeyError:
+                self._json({"error": "unknown tab"}, 404)
+            except Exception as e:  # one tab failing never takes the dashboard down
+                self._json({"error": f"{type(e).__name__}: {e}"}, 500)
         else:
             self._send(404, b"", "text/plain")
 
@@ -183,10 +329,25 @@ class Handler(BaseHTTPRequestHandler):
             events.unsubscribe(listener)
 
     def do_POST(self):
-        if not self._authorized():
+        if PASSWORD and self._host_ok() and urllib.parse.urlparse(self.path).path == "/login":
+            self._login()
+            return
+        if PASSWORD and self._host_ok() and urllib.parse.urlparse(self.path).path == "/logout":
+            if self._session_key():
+                _end_session(self._session_key())
+            self.send_response(303)
+            self.send_header("Set-Cookie", "jarvis_session=; Path=/; Max-Age=0")
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if not self._authorized() or (not self.headers.get("Content-Type", "").startswith("application/json")):
             self._send(403, b"", "text/plain")
             return
-        length = min(int(self.headers.get("Content-Length", 0)), 100_000)
+        try:
+            length = max(0, min(int(self.headers.get("Content-Length", 0) or 0), 100_000))
+        except ValueError:
+            length = 0
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:

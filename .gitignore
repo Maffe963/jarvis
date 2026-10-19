@@ -25,3 +25,6 @@ memory/dashboard.json
 memory/team/
 code_repos.json
 memory/dashboard_token
+memory/usage*
+memory/dashboard_sessions.json*
+.claude/worktrees/
