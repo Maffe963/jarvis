@@ -32,11 +32,13 @@ HELP = ("This is your agent team. Each agent gets its own topic here: whatever y
         "/team - what each agent is doing\n"
         "/stop - in an agent's topic, stop it (or /stop name, /stop all)\n"
         "/result - in an agent's topic, its final result (or /result name)\n"
+        "/clear - take finished agents off the team and close their topics\n"
         "/help - this message\n\n"
         "Send a photo, screenshot, video or file in an agent's topic to give it to that agent. In General, start "
         "with an agent's name instead: \"Video Editor: make this vertical\".")
 COMMANDS = [("new", "Start an agent: Name | role | task"), ("code", "Start a coder: repo | task"), ("team", "What each agent is doing"),
             ("stop", "Stop this agent (or: /stop name, /stop all)"), ("result", "This agent's final result"),
+            ("clear", "Take finished agents off the team"),
             ("help", "How the team chat works")]
 MARKS = {"done": "✅", "failed": "⚠️", "stopped": "⏹"}
 
@@ -190,6 +192,16 @@ class TeamBot:
         if self.chat_id is None:
             return
         kind = e["type"]
+        if kind == "cleared":  # finished agents taken off the team: close their topics (history stays readable)
+            for agent_id in e.get("agents", []):
+                thread = self.state["topics"].pop(agent_id, None)
+                if thread:
+                    try:
+                        self._call("closeForumTopic", chat_id=self.chat_id, message_thread_id=thread)
+                    except Exception as err:
+                        print(f"[team telegram] couldn't close a topic: {err}")
+            self._save()
+            return
         if kind == "agent":
             thread = self._make_topic(e["agent"], e["name"], e["role"])
             if e.get("kind") == "standing":
@@ -391,6 +403,8 @@ class TeamBot:
             self._reply(message, HELP)
         elif command == "/team":
             self._reply(message, agents.team_status())
+        elif command == "/clear":
+            self._reply(message, agents.clear_finished())
         elif command == "/new":
             if not arg:
                 self._reply(message, "Say what to do: /new Name | role | task, or just /new task.")

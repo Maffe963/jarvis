@@ -41,6 +41,8 @@ CALLS = {
     "agent_result": (agents.agent_result, ("agent",)),
     "team_messages": (agents.team_messages, ("agent", "limit", "updates")),
     "answer_approval": (agents.answer_approval, ("approval", "yes")),
+    "start_specialists": (agents.sync_standing, ()),
+    "clear_finished": (agents.clear_finished, ()),
 }
 
 

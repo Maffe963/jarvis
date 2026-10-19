@@ -1278,6 +1278,9 @@ function handle(e) {
       else { feed("jar", `${t} · ${T.words.jarvis}`, e.text); flyMessage("jarvis", "user", T.status.working, "msg", e.text); }
       break;
     case "theme": if (e.theme !== themeKey) applyTheme(e.theme, false); break;
+    case "cleared":   // finished agents taken off the team
+      for (const id of e.agents || []) { if (selected === id) closeDrawer(); delete agents[id]; }
+      render(); break;
   }
 }
 
