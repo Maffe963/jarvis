@@ -211,6 +211,7 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
 - `JARVIS_MODEL`: in subscription mode an alias like `sonnet` or `opus` (default `sonnet`); in API
   mode a full model ID (default `claude-sonnet-5-5`).
 - `JARVIS_EFFORT`: subscription mode only, `low` (default, fastest) up to `max`.
+- `JARVIS_CAVEMAN`: a test of [Caveman](https://github.com/JuliusBrussee/caveman) (terse replies to save tokens). `test` (default): for `JARVIS_CAVEMAN_DAYS` days (default 3) each Claude session randomly has it on or off, the dashboard's Usage tab compares them, and the results go to your phone when it ends. `on` keeps it on; `off` skips it.
 - `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`: a more natural voice.
 
 ## Reviewing changes to Jarvis

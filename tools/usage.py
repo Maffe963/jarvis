@@ -52,16 +52,20 @@ def tokens(usage: dict) -> dict:
             "cached": int(usage.get("cache_read_input_tokens") or 0), "out": int(usage.get("output_tokens") or 0)}
 
 
-def record(who: str, by_message: dict, model: str = "") -> None:
+def record(who: str, by_message: dict, model: str = "", arm: str = "") -> None:
     """One turn's usage. `by_message` is {message id: usage block}: the last block seen for each API message,
-    because Claude Code repeats a message's usage on each of its parts."""
+    because Claude Code repeats a message's usage on each of its parts. `arm`: the session's side of the
+    Caveman test (tools/caveman.py), if one is running."""
     total = {"in": 0, "cached": 0, "out": 0}
     for usage in by_message.values():
         for k, v in tokens(usage).items():
             total[k] += v
     if not any(total.values()):
         return
-    line = json.dumps({"t": round(time.time()), "who": who, "model": model, "calls": len(by_message), **total})
+    entry = {"t": round(time.time()), "who": who, "model": model, "calls": len(by_message), **total}
+    if arm:
+        entry["arm"] = arm
+    line = json.dumps(entry)
     try:
         with _shared_lock():
             with open(LOG_FILE, "a", encoding="utf-8") as f:
