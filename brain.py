@@ -11,7 +11,7 @@ import time
 import uuid
 from datetime import datetime
 
-from tools import facts, usage
+from tools import caveman, facts, usage
 from tools.registry import TOOLS, run_tool, task_cancelled
 
 SYSTEM_PROMPT = """You are Jarvis, a highly capable AI assistant in the style of Tony Stark's Jarvis.
@@ -215,6 +215,7 @@ class ClaudeCodeSession:
         self._stderr: list[str] = []
         self._fresh = True  # next message is the first this process sees
         self._turns = 0     # turns this process has had (its context grows with each)
+        self.arm = ""       # this process's side of the Caveman test, if one is running
         self._in_use = threading.Lock()  # held during a turn, so a refresh never cuts one off
         atexit.register(self.close)
 
@@ -227,7 +228,9 @@ class ClaudeCodeSession:
         workdir = os.path.join(tempfile.gettempdir(), "jarvis-claude-code")
         os.makedirs(workdir, exist_ok=True)
         cmd = list(self._cmd)
-        cmd[cmd.index("--system-prompt") + 1] = self.system_prompt + facts.prompt_section()  # memory as of now
+        self.arm = caveman.pick()  # the Caveman test: terse replies in about half of sessions
+        cmd[cmd.index("--system-prompt") + 1] = (self.system_prompt + facts.prompt_section()  # memory as of now
+                                                 + caveman.prompt_addition(self.arm))
         self._proc = subprocess.Popen(
             cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding="utf-8", errors="replace", env=env, cwd=workdir, bufsize=1,
@@ -384,7 +387,7 @@ class ClaudeCodeSession:
             elif kind == "rate_limit_event":
                 usage.record_limit(event)
             if kind == "result":
-                usage.record(self.label, used, model)
+                usage.record(self.label, used, model, self.arm)
                 if event.get("is_error"):
                     raise _error_for(str(event.get("result") or event.get("subtype")))
                 return str(event.get("result", "")).strip()

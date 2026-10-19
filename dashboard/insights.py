@@ -17,7 +17,7 @@ import psutil
 
 from memory.conversation import HISTORY_FILE
 from team import coding, messages, standing
-from tools import background, facts, lists, reminders, usage
+from tools import background, caveman, facts, lists, reminders, usage
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECTS_FILE = os.path.join(ROOT, "projects.json")
@@ -223,7 +223,7 @@ def usage_report() -> dict:
                 totals["you"]["5h"] += n
     ranked = sorted(who.items(), key=lambda kv: -kv[1]["week"])
     return {"plan": plan_usage(), "limits": usage.limits(), "days": labels, "by_day": by_day, "totals": totals,
-            "by_who": [{"who": k, **v} for k, v in ranked[:12]]}
+            "by_who": [{"who": k, **v} for k, v in ranked[:12]], "caveman": caveman.results()}
 
 
 def summary() -> dict:

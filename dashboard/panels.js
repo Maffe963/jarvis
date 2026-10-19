@@ -95,6 +95,17 @@
     },
 
     usage(d) {
+      const caveman = r => {
+        const until = new Date(r.end * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+        const row = (c, title) => {
+          const a = c.caveman, b = c.normal, pct = v => `${v > 0 ? "+" : ""}${Math.round(v)}%`;
+          return `<div class="card"><div class="top"><b>${esc(title)}</b><span class="meta" style="margin-left:auto">${esc(c.verdict)}</span></div>
+            <div class="meta">${a.turns && b.turns ? `per turn $${a.cost.toFixed(4)} with vs $${b.cost.toFixed(4)} without (${pct(c.change)}) ·
+            output ${n(Math.round(a.out))} vs ${n(Math.round(b.out))} tokens (${pct(c.out_change)}) · ` : ""}${a.turns} vs ${b.turns} turns</div></div>`;
+        };
+        return h3("Caveman test", r.done ? "finished" : `running until ${esc(until)}`) +
+          row(r.all, "Everything") + row(r.jarvis, "Your chats with Jarvis") + row(r.agents, "Agents and tasks");
+      };
       let html = h3("Your Claude plan");
       const windows = (d.plan && d.plan.windows) || [];
       if (windows.length) html += windows.map(w => `<div class="card" style="--c:${pctColor(w.percent)}"><div class="top"><b>${esc(w.name)}</b>
@@ -114,6 +125,7 @@
           <i style="height:${d.by_day.you[i] / max * 100}%;background:var(--accent);opacity:.4"></i><i style="height:${d.by_day.jarvis[i] / max * 100}%;background:var(--accent)"></i>
           <em>${esc(day)}</em></div>`).join("")}</div>
         <div class="key"><span style="--c:var(--accent)">Jarvis &amp; agents</span><span class="faint" style="--c:var(--accent)">Your Claude Code</span></div>`;
+      if (d.caveman) html += caveman(d.caveman);
       html += h3("Who used it", "this week");
       const top = Math.max(1, ...d.by_who.map(w => w.week));
       html += d.by_who.length ? d.by_who.map(w => `<div class="card"><div class="top"><b>${esc(w.who)}</b><span class="meta" style="margin-left:auto">

@@ -12,7 +12,7 @@ import anthropic
 
 from brain import NEW_MESSAGE, BackendError, TaskInterrupted, cancel_task, standby_backend, think, warm_up
 from memory.conversation import HISTORY_FILE, add_turn, load_history, save_history
-from tools import reminders
+from tools import caveman, reminders
 from tools import offline, quick
 from tools.registry import activity, run_tool, task_cancelled, wait_for_running_tool
 from tools.system import quit_requested, set_announcer, standby_requested
@@ -284,6 +284,7 @@ def run_remote() -> None:
     start_dashboard()
     start_team(lambda msg: print(f"Jarvis: {msg}"))  # the team service messages the phone itself
     reminders.start()
+    caveman.start()  # sends the Caveman test's results when it ends
     exit_when_asked()
     print("Jarvis online (phone only). Message your bot on Telegram. Ctrl+C to quit.")
     try:
@@ -297,6 +298,7 @@ def run_text() -> None:
     warm_up()
     threading.Thread(target=quick.load_apps, daemon=True).start()  # so "open Spotify" is instant
     reminders.start()
+    caveman.start()  # sends the Caveman test's results when it ends
     start_team(lambda msg: print(f"\nJarvis: {msg}"))
     print("Jarvis online (text mode). Type 'quit' to exit.\n")
     history = load_history()
@@ -444,6 +446,7 @@ def run_voice() -> None:
     print("Say 'hey Jarvis'. Ctrl+C to quit.\n")
     speak("Jarvis online.")
     reminders.start()
+    caveman.start()  # sends the Caveman test's results when it ends
     start_team(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg)))
     exit_when_asked()
 
