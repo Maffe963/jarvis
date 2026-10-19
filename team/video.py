@@ -273,9 +273,36 @@ def contact_sheet(path: str, times: list[float], width: int = 360) -> bytes:
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic")
 
 
-def view_media(path: str) -> list | str:
-    """What any agent sees of an image (the picture) or a video (frames across it), for the view_media tool."""
+def _text(path: str) -> str | None:
+    """A plain text file's contents (cut at files.MAX_READ_CHARS), or None if it isn't text."""
+    with open(path, "rb") as f:
+        data = f.read(files.MAX_READ_CHARS * 4 + 1)
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        text = data.decode("utf-16", "replace")
+    elif b"\x00" in data[:8192]:
+        return None   # binary
+    else:
+        try:
+            text = data.decode("utf-8-sig")
+        except UnicodeDecodeError as e:
+            if e.start < len(data) - 4:  # not just a character cut in half at the end
+                text = data.decode("cp1252", "replace")
+            else:
+                text = data[:e.start].decode("utf-8-sig")
+    if len(text) > files.MAX_READ_CHARS or os.path.getsize(path) > len(data):
+        text = text[:files.MAX_READ_CHARS] + f"\n[... cut after {files.MAX_READ_CHARS} characters]"
+    return text
+
+
+def view_file(path: str) -> list | str:
+    """What any agent sees of a file: an image (the picture), a video (frames across it) or plain text (its text),
+    for the view_file tool."""
     src = _source(path)
+    lower = src.lower()
+    if not lower.endswith(IMAGE_EXTS + VIDEO_EXTS + (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg")):
+        text = _text(src)
+        if text is not None:
+            return f"{os.path.basename(src)} ({os.path.getsize(src):,} bytes):\n\n{text}"
     if src.lower().endswith(IMAGE_EXTS) and not src.lower().endswith(".gif"):
         from PIL import Image
 
@@ -295,7 +322,8 @@ def view_media(path: str) -> list | str:
     except Exception:
         info = {"video": None}
     if not info["video"]:
-        return f"{os.path.basename(src)} isn't an image or a video I can show (read_file reads text files)."
+        return (f"{os.path.basename(src)} isn't an image, video or plain text file, so I can't show it (PDFs and "
+                "Word documents aren't supported yet).")
     duration = info["duration"]
     count = 1 if duration < 1 else 6
     times = [duration * (n + .5) / count for n in range(count)]

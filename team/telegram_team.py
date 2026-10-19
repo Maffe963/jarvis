@@ -344,9 +344,7 @@ class TeamBot:
             return
         caption = (message.get("caption") or "").strip()
         what = {"photo": "a photo", "video": "a video"}.get(kind, "a file")
-        note = (f"[The user sent {what} on Telegram, saved at {path}. Use view_media to see it.]" if kind != "file"
-                else f"[The user sent a file on Telegram, saved at {path}. view_media shows images and videos; "
-                     "read_file reads text.]")
+        note = f"[The user sent {what} on Telegram, saved at {path}. Open it with view_file.]"
         result = agents.deliver("user", agent.id, note + (f"\n{caption}" if caption else ""), via="telegram")
         if not result.startswith("Sent"):
             self._reply(message, result)

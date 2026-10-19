@@ -228,11 +228,11 @@ class Agent:
             deliver(self.id, author.id, ("APPROVED. " if approved else "CHANGES NEEDED. ") + (notes or ""))
             return f"Sent your verdict to {author.name}."
 
-        def view_media(inputs: dict):
+        def view_file(inputs: dict):
             from team import video
 
             try:
-                return video.view_media(inputs.get("path", ""))
+                return video.view_file(inputs.get("path", ""))
             except Exception as e:  # not allowed, missing, unreadable: tell the agent
                 return f"Couldn't show that: {e}"
 
@@ -270,10 +270,11 @@ class Agent:
                        finish),
             "team": ({"name": "team", "description": "Who else is on the team and what they're doing.",
                       "input_schema": {"type": "object", "properties": {}, "required": []}}, team_list),
-            "view_media": ({"name": "view_media", "description": "See an image (a screenshot or photo the user "
-                            "sent, or any picture on the PC), or frames from across a video.",
-                            "input_schema": {"type": "object", "properties": {"path": text},
-                                             "required": ["path"]}}, view_media),
+            "view_file": ({"name": "view_file", "description": "Open a file the user sent or any file on the PC: "
+                           "see an image (screenshot, photo), frames from across a video, or read a plain text "
+                           "file (notes, CSV, JSON, logs, code).",
+                           "input_schema": {"type": "object", "properties": {"path": text},
+                                            "required": ["path"]}}, view_file),
         } | ({
             "review_verdict": ({"name": "review_verdict", "description": "Give a teammate your review: approved or "
                                 "not, with each problem and its fix.",
