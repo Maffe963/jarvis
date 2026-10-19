@@ -141,6 +141,9 @@ def _duration(seconds) -> str:
             return f"{n} {unit}{'' if n == 1 else 's'}"
 
 
+SILENT_TOOLS = {"remember"}  # done quietly in the background of a conversation: no "Yes sir, noted."
+
+
 def ack_phrase(name: str, inputs: dict) -> str:
     """What Jarvis says it's doing when a tool starts, e.g. "opening Spotify"."""
     action = inputs.get("action")
@@ -240,7 +243,7 @@ def run_tool(name: str, inputs: dict, confirm=None, acknowledge=None, cancelled:
                 or needs_confirmation(name, inputs))
     if question and not (confirm and confirm(question)):
         return "The user declined this action. Do not retry it."
-    if acknowledge:
+    if acknowledge and name not in SILENT_TOOLS:
         acknowledge(ack_phrase(name, inputs))
     try:
         with _running:

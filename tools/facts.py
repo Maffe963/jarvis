@@ -6,7 +6,7 @@ import threading
 from datetime import date
 
 FACTS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "memory", "facts.json")
-MAX_FACTS = 200
+MAX_FACTS = 400  # a few KB of text; the oldest go first past this
 _lock = threading.Lock()
 
 
@@ -29,15 +29,19 @@ def prompt_section() -> str:
     if not facts:
         return ""
     lines = "\n".join(f"- {f['fact']} (noted {f['added']})" for f in facts)
-    return f"\n\nThings the user asked you to remember (use them when relevant):\n{lines}"
+    return f"\n\nWhat you know about the user (from earlier conversations; use it when relevant):\n{lines}"
 
 
-def remember(fact: str) -> str:
+def remember(fact: str, replaces: str = "") -> str:
+    """Save a fact. `replaces`: words from an older fact this one updates (e.g. a new address), which is dropped."""
     fact = fact.strip()
     if not fact:
         return "Nothing to remember."
     with _lock:
         facts = _load()
+        old = replaces.lower().strip()
+        if old:
+            facts = [f for f in facts if old not in f["fact"].lower()]
         if any(f["fact"].lower() == fact.lower() for f in facts):
             return "I already have that noted."
         facts.append({"fact": fact, "added": date.today().isoformat()})
@@ -65,10 +69,16 @@ def list_facts() -> str:
 TOOLS = [
     {
         "name": "remember",
-        "description": "Save a fact or preference long-term when the user asks you to remember something (or "
-                       "clearly states a lasting preference). Write it as a short standalone sentence, e.g. "
-                       "'The user's parking spot is B12'. It's kept across restarts.",
-        "input_schema": {"type": "object", "properties": {"fact": {"type": "string"}}, "required": ["fact"]}
+        "description": "Save something about the user to remember long-term, kept across restarts and used in every "
+                       "conversation (voice, phone, dashboard) and by their agents. Use it when they ask, and also on "
+                       "your own whenever they mention something useful later: people in their life (names, "
+                       "relationships, birthdays), preferences, routines, goals and plans, school and work, places, "
+                       "accounts and cards they use (never passwords, codes or full card/ID numbers), deadlines. Not "
+                       "for one-off chatter. Write a short standalone sentence, e.g. 'The user's sister is Linh; her "
+                       "birthday is March 3'. When it updates something already noted, pass `replaces`.",
+        "input_schema": {"type": "object", "properties": {
+            "fact": {"type": "string"},
+            "replaces": {"type": "string", "description": "Words from the older fact this replaces (e.g. 'parking spot')"}}, "required": ["fact"]}
     },
     {
         "name": "forget",
