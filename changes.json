@@ -3,6 +3,11 @@
   "done": [
     {
       "date": "2026-10-19",
+      "title": "Jarvis can watch videos",
+      "detail": "Send Jarvis or any agent a YouTube/TikTok/Instagram link or a video file and ask what happens in it. He looks at frames from across it (more where the shot changes) and reads what's said (the video's captions, or a transcript made on the PC), then can zoom into any part. Built like the popular claude-video and claude-real-video projects, with no extra keys."
+    },
+    {
+      "date": "2026-10-19",
       "title": "Chef agent",
       "detail": "Suggests breakfast, lunch and dinner every morning at 7:30 and writes full recipes, saving each to your cookbook. Remembers your allergies, restrictions, likes and dislikes and how each recipe went, so it gets more tailored over time. Recipes with an ingredient you're allergic to are blocked."
     },

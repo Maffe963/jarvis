@@ -2,7 +2,7 @@
 import threading
 
 from tools import (background, browser, desktop, facts, finder, gcal, lists, messaging, monitors, phone, projects, reminders,
-                   spotify, ui, updater, voice_settings, watchers, weather)
+                   spotify, ui, updater, voice_settings, watch, watchers, weather)
 from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
                          revoke_folder_access, write_file)
 from tools.search import web_search
@@ -98,7 +98,7 @@ TOOLS = [
             "required": ["id_or_text"]
         }
     }
-] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + background.TOOLS + browser.TOOLS + team_client.TOOLS + SYSTEM_TOOLS
+] + finder.TOOLS + messaging.TOOLS + weather.TOOLS + lists.TOOLS + desktop.TOOLS + projects.TOOLS + voice_settings.TOOLS + monitors.TOOLS + ui.TOOLS + facts.TOOLS + phone.TOOLS + spotify.TOOLS + gcal.TOOLS + updater.TOOLS + watchers.TOOLS + background.TOOLS + browser.TOOLS + watch.TOOLS + team_client.TOOLS + SYSTEM_TOOLS
 
 TOOL_MAP = {
     "web_search": web_search,
@@ -127,6 +127,7 @@ TOOL_MAP = {
     **watchers.TOOL_MAP,
     **background.TOOL_MAP,
     **browser.TOOL_MAP,
+    **watch.TOOL_MAP,
     **team_client.TOOL_MAP,
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
@@ -195,6 +196,7 @@ def ack_phrase(name: str, inputs: dict) -> str:
         "open_dashboard": lambda: "opening the dashboard",
         "browser_open": lambda: "opening that in my browser",
         "browser_search": lambda: "searching for that",
+        "watch_video": lambda: "watching it now",
         "start_background_task": lambda: "I'll work on that in the background",
         "watch_download": lambda: "I'll keep an eye on it",
         "watch_app_closes": lambda: "I'll keep an eye on it",

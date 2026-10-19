@@ -15,3 +15,4 @@ Pillow>=10.1
 playwright>=1.40
 onnxruntime-genai>=0.10
 imageio-ffmpeg>=0.5
+yt-dlp[default]>=2026.6.1

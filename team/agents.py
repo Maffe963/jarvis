@@ -62,6 +62,7 @@ QUIET = "[quiet]"  # a standing agent's whole reply when a job found nothing wor
 CHANGING_TOOLS = ("write_file", "run_project_command", "write_code", "edit_code", "delete_code", "commit", "push")
 KINDS = ("agent", "coder")  # what Jarvis can start; the Reviewer starts by itself, standing agents from their file
 TEMPORARY = ("agent", "coder", "reviewer")  # agents that finish (not standing ones)
+EVERY_AGENT = {"watch_video"}  # read-only tools every agent gets, whatever its definition lists
 STANDING_HISTORY = 40  # turns a standing agent keeps; older ones live on in its notebook and the message log
 STANDING_PROMPT = """You are {name}, one of the user's standing specialists on a team led by Jarvis, the user's
 personal assistant. You stay on the team for good: each message (from the user, from Jarvis, from a teammate, or a
@@ -358,7 +359,7 @@ class Agent:
         prompt = PROMPT.format(name=self.name, role=self.role, team=team)
         allowed = REVIEWER_TOOLS if self.kind == "reviewer" else background.ALLOWED
         if self.parent:  # never more than its specialist may use
-            allowed = set(standing.definition(self.parent).get("tools", [])) & background.ALLOWED
+            allowed = set(standing.definition(self.parent).get("tools", [])) & background.ALLOWED | EVERY_AGENT
         if self.kind == "coder" and self.workspace:
             prompt += CODER_GUIDE.format(**self.workspace)
             allowed = {"web_search"}  # everything else it does goes through its workspace's tools
@@ -434,7 +435,7 @@ def _standing_turn(agent: "Agent", message: str) -> str:
     prompt = STANDING_PROMPT.format(name=agent.name, role=agent.role, task=spec.get("instructions", agent.task),
                                     notebook=standing.notebook_for_prompt(agent.name),
                                     team=team, today=time.strftime("%A, %B %d, %Y"))
-    allowed = set(spec.get("tools", [])) & background.ALLOWED  # never more than task agents get
+    allowed = set(spec.get("tools", [])) & background.ALLOWED | EVERY_AGENT  # never more than task agents get
     agent.history.append({"role": "user", "content": message})
     del agent.history[:-STANDING_HISTORY]
     agent.set_status("working", _short(message, 120))
