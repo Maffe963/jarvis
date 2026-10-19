@@ -608,6 +608,10 @@ def shutdown() -> None:
 def create_agent(name: str, role: str, task: str, kind: str = "agent", repo: str = "") -> str:
     """`kind`: "agent", "coder" (works on `repo`, see team/coding.py), "reviewer" (the team's Reviewer) or
     "standing" (see team/standing.py); the last two don't count towards MAX_AGENTS."""
+    specialist = next((n for n in standing.definitions() if n.lower() == name.strip().lower()), None)
+    if kind in KINDS and specialist:  # never a temporary copy of a standing specialist
+        return (f"{specialist} is one of the user's standing specialists, not something to create: pass the "
+                f"request to it with message_agent. If it's stopped, start_specialists brings it back.")
     if kind in KINDS and len([a for a in active() if a.kind in KINDS]) >= MAX_AGENTS:
         return f"There are already {MAX_AGENTS} agents working; stop one first."
     if any(a.name.lower() == name.strip().lower() for a in active()):  # exact: "Writer" isn't "Ghostwriter"
@@ -643,6 +647,20 @@ def stop_agent(agent: str) -> str:
         return ("No task agents are running (standing agents are stopped one at a time, by name)." if every
                 else f"No active agent like '{agent}'.")
     return f"Stopped {', '.join(a.name for a in targets)}."
+
+
+def clear_finished() -> str:
+    """Take finished task agents off the team (and the dashboard). Standing specialists and their history stay;
+    the message log keeps everything that was said."""
+    with _lock:
+        gone = [a for a in _agents.values() if a.status in FINISHED and a.kind != "standing"]
+        for a in gone:
+            del _agents[a.id]
+    if not gone:
+        return "There are no finished agents to clear."
+    save()
+    events.emit("cleared", agents=[a.id for a in gone])
+    return f"Cleared {len(gone)} finished agent{'s' if len(gone) != 1 else ''} off the team."
 
 
 def team_status() -> str:

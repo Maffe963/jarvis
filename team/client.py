@@ -222,6 +222,22 @@ def stop_agent(agent: str) -> str:
     return call("stop_agent", agent=agent)
 
 
+def restart_team() -> str:
+    """The same as /restart team on Telegram: the service restarts, and every agent (specialists included) carries
+    on where it was."""
+    if not restart_service():
+        return "The agent team didn't come back after restarting. Check memory/team/service.log on the PC."
+    return "The agent team restarted; the specialists and any unfinished agents carried on where they were."
+
+
+def start_specialists() -> str:
+    return call("start_specialists")
+
+
+def clear_finished() -> str:
+    return call("clear_finished")
+
+
 def team_status() -> str:
     return call("team_status")
 
@@ -288,8 +304,9 @@ TOOLS = [
                        "coder each; one coder is enough for a small change. Code repositories: "
                        f"{', '.join(_code_repos()) or 'none set up yet (code_repos.json)'}. "
                        "Give each a short name and complete standalone instructions. The user also has standing "
-                       f"specialists who stay on the team for good: {_standing_names() or 'none yet'}. For their "
-                       "subjects, pass the request to them with message_agent instead of creating a new agent.",
+                       f"specialists who stay on the team for good: {_standing_names() or 'none yet'}. Never "
+                       "create an agent with one of their names: for their subjects, pass the request to them with "
+                       "message_agent (start_specialists brings back any that were stopped).",
         "input_schema": {"type": "object", "properties": {
             "name": {"type": "string", "description": "Short name, e.g. 'Researcher' or 'Backend coder'"},
             "role": {"type": "string", "description": "One line: what this agent is responsible for"},
@@ -305,8 +322,29 @@ TOOLS = [
     },
     {
         "name": "stop_agent",
-        "description": "Stop an agent (by name or id), or 'all'.",
+        "description": "Stop an agent (by name or id), or 'all' (every task agent; the standing specialists keep "
+                       "running). Only stop a specialist by name when the user explicitly wants that one turned "
+                       "off. To restart the team, use restart_team instead.",
         "input_schema": {"type": "object", "properties": {"agent": text}, "required": ["agent"]}
+    },
+    {
+        "name": "restart_team",
+        "description": "Restart the agent team (\"restart the team\", \"restart the agents\"), e.g. after an "
+                       "update or when it seems stuck. Every agent, specialists included, carries on where it was: "
+                       "don't stop or recreate any of them yourself.",
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+        "name": "start_specialists",
+        "description": "Bring back any standing specialists that were stopped (with their notes and Telegram "
+                       "topics), and start any newly added to standing_agents.json.",
+        "input_schema": {"type": "object", "properties": {}, "required": []}
+    },
+    {
+        "name": "clear_finished",
+        "description": "Take finished agents off the team and the dashboard (\"clear the finished agents\", "
+                       "\"clean up the dashboard\"). Their messages stay in the log; specialists aren't affected.",
+        "input_schema": {"type": "object", "properties": {}, "required": []}
     },
     {
         "name": "team_status",
@@ -353,4 +391,5 @@ TOOLS = [
 TOOL_MAP = {"create_agent": create_agent, "message_agent": message_agent, "stop_agent": stop_agent,
             "team_status": team_status, "agent_result": agent_result, "team_messages": team_messages,
             "open_dashboard": open_dashboard, "set_dashboard_theme": set_dashboard_theme,
-            "send_dashboard_link": send_dashboard_link}
+            "send_dashboard_link": send_dashboard_link, "restart_team": restart_team,
+            "start_specialists": start_specialists, "clear_finished": clear_finished}
