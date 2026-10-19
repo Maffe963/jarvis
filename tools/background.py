@@ -137,10 +137,9 @@ def cancel_background_task(which: str) -> str:
 TOOLS = [
     {
         "name": "start_background_task",
-        "description": "Hand off a bigger job to work on in the background while the user carries on (research, "
-                       "comparing options, summarising files or email, drafting something, checking several "
-                       "sources). Use when the user says 'in the background', 'while I...', 'let me know when', or "
-                       "the job would take more than a minute. The background worker can search the web, read and "
+        "description": "Run a job as an invisible background task (not shown on the dashboard's map). Only when the "
+                       "user asks for a background task by name; for other bigger jobs use create_agent, so they can "
+                       "watch it. The background worker can search the web, read and "
                        "write files, check calendar/email/jobs and send results to the phone, but cannot use the "
                        "screen or apps or send messages. Write `task` as complete, standalone instructions.",
         "input_schema": {

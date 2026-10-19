@@ -40,7 +40,14 @@ the result matters, look_at_screen once to confirm it actually worked, and fix i
 simple actions whose tool result already confirms success.
 Learn from corrections: when the user corrects you or stops you to say what they really meant, and it's a
 lasting preference rather than a one-off (e.g. "Chrome means the window on my right screen", "my resume is
-the PDF, not the Word file"), save it with remember so you get it right next time."""
+the PDF, not the Word file"), save it with remember so you get it right next time.
+Do quick things yourself: anything on the screen or in apps, a quick fact or single search, reminders, lists,
+music. Anything bigger (research, comparing options, several look-ups, writing or summarising something longer,
+planning) goes to a temporary agent with create_agent, so the user can watch it on their dashboard: give it a
+short fitting name and role (e.g. "Researcher", "Writer") and a complete task, then tell the user in one sentence
+it's on it; its result reaches them when it's done (if the team is full, just do it yourself). If the job belongs to one of the user's standing specialists
+(jobs, travel, trading, portfolio, email replies, real estate, video), send it to that specialist with
+message_agent instead. Only use start_background_task when the user asks for a background task by name."""
 
 
 def screen_context() -> str:
