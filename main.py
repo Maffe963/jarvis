@@ -285,7 +285,7 @@ def run_remote() -> None:
     start_team(lambda msg: print(f"Jarvis: {msg}"))  # the team service messages the phone itself
     reminders.start()
     caveman.start()  # sends the Caveman test's results when it ends
-    upkeep.start()  # the 9am morning report and scheduled setup jobs (changes.json)
+    upkeep.start(busy)  # the 9am morning report and scheduled setup jobs (changes.json)
     exit_when_asked()
     print("Jarvis online (phone only). Message your bot on Telegram. Ctrl+C to quit.")
     try:
@@ -300,7 +300,6 @@ def run_text() -> None:
     threading.Thread(target=quick.load_apps, daemon=True).start()  # so "open Spotify" is instant
     reminders.start()
     caveman.start()  # sends the Caveman test's results when it ends
-    upkeep.start()  # the 9am morning report and scheduled setup jobs (changes.json)
     start_team(lambda msg: print(f"\nJarvis: {msg}"))
     print("Jarvis online (text mode). Type 'quit' to exit.\n")
     history = load_history()
@@ -451,7 +450,7 @@ def run_voice() -> None:
     speak("Jarvis online.")
     reminders.start()
     caveman.start()  # sends the Caveman test's results when it ends
-    upkeep.start()  # the 9am morning report and scheduled setup jobs (changes.json)
+    upkeep.start(busy)  # the 9am morning report and scheduled setup jobs (changes.json)
     start_team(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg)))
     exit_when_asked()
 
