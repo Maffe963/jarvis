@@ -166,6 +166,9 @@ def _think_api(conversation_history: list[dict], system: str, confirm, acknowled
 
 INTERRUPT_WAIT_S = 3  # how long Claude Code gets to stop a turn before it's ended instead
 REFRESH_AFTER_TURNS = 40  # then a fresh Claude Code is started in a quiet moment (see _refresh)
+# ...or sooner once the conversation it re-reads on every step is this big (screenshots, long pages, files): every
+# step costs all of it again, so a fresh start with a short replay is much cheaper than carrying it on.
+REFRESH_AT_TOKENS = int(os.environ.get("JARVIS_REFRESH_AT_TOKENS", "60000"))
 REFRESH_IDLE_S = 90
 
 
@@ -179,7 +182,7 @@ class ClaudeCodeSession:
 
     def __init__(self, system_prompt: str | None = None, allowed_tools: set[str] | None = None,
                  cancelled: threading.Event | None = None, log: list[str] | None = None,
-                 extra_tools: dict | None = None, label: str = "Jarvis") -> None:
+                 extra_tools: dict | None = None, label: str = "Jarvis", model: str | None = None) -> None:
         """Defaults: the main conversation. Background tasks pass their own prompt, tools and stop switch, and a
         label saying whose session it is (for the dashboard's usage and session lists)."""
         from tools.bridge import ToolBridge
@@ -204,7 +207,7 @@ class ClaudeCodeSession:
             claude, "-p",
             "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
             "--include-partial-messages",       # the reply arrives word by word, so speech can start early
-            "--model", os.environ.get("JARVIS_MODEL", "sonnet"),
+            "--model", model or os.environ.get("JARVIS_MODEL", "sonnet"),
             "--effort", os.environ.get("JARVIS_EFFORT", "low"),
             "--system-prompt", self.system_prompt,
             "--tools", "",                      # no built-in Claude Code tools (Bash, Edit, ...)
@@ -222,6 +225,8 @@ class ClaudeCodeSession:
         self._stderr: list[str] = []
         self._fresh = True  # next message is the first this process sees
         self._turns = 0     # turns this process has had (its context grows with each)
+        self._context = 0   # tokens the last step read (its whole conversation so far)
+        self._refreshing = False  # a refresh is already scheduled
         self.arm = ""       # this process's side of the Caveman test, if one is running
         self._in_use = threading.Lock()  # held during a turn, so a refresh never cuts one off
         atexit.register(self.close)
@@ -246,6 +251,7 @@ class ClaudeCodeSession:
         self._stderr = []
         self._fresh = True
         self._turns = 0
+        self._context = 0
         proc, events = self._proc, self._events
 
         def pump_stdout():
@@ -318,14 +324,15 @@ class ClaudeCodeSession:
                 return self._ask(history, confirm, acknowledge, on_text)
             finally:
                 self._turns += 1
-                if self._turns == REFRESH_AFTER_TURNS:
+                if not self._refreshing and (self._turns >= REFRESH_AFTER_TURNS or self._context >= REFRESH_AT_TOKENS):
+                    self._refreshing = True
                     timer = threading.Timer(REFRESH_IDLE_S, self._refresh)
                     timer.daemon = True
                     timer.start()
 
     def _refresh(self) -> None:
-        """After many turns, start a fresh Claude Code (it gets the recent conversation replayed) while nobody's
-        waiting, so replies don't slow down as the context grows. If a request is running, try again later."""
+        """After many turns or once the context is big, start a fresh Claude Code (it gets the recent conversation
+        replayed) while nobody's waiting, so replies stay quick and cheap. If a request is running, try again later."""
         if not self._in_use.acquire(blocking=False):
             timer = threading.Timer(REFRESH_IDLE_S, self._refresh)
             timer.daemon = True
@@ -336,6 +343,7 @@ class ClaudeCodeSession:
                 self.close()
                 self._start()
         finally:
+            self._refreshing = False
             self._in_use.release()
 
     def _ask(self, history: list[dict], confirm, acknowledge=None, on_text=None) -> str:
@@ -390,6 +398,7 @@ class ClaudeCodeSession:
                 message = event.get("message") or {}
                 if message.get("usage"):
                     used[message.get("id") or len(used)] = message["usage"]
+                    self._context = sum(usage.tokens(message["usage"]).get(k, 0) for k in ("in", "cached"))
                     model = message.get("model") or model
             elif kind == "rate_limit_event":
                 usage.record_limit(event)
