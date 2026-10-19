@@ -145,6 +145,9 @@ def settings() -> None:
 
 
 def main() -> int:
+    for stream in (sys.stdout, sys.stderr):  # Claude Code's output has ✔ and such; Windows pipes default to cp1252
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     claude = shutil.which("claude")
     if not claude:
         print("Claude Code isn't installed (or not on PATH). Install it first: https://claude.com/claude-code")
