@@ -223,7 +223,8 @@ def usage_report() -> dict:
                 totals["you"]["5h"] += n
     ranked = sorted(who.items(), key=lambda kv: -kv[1]["week"])
     return {"plan": plan_usage(), "limits": usage.limits(), "days": labels, "by_day": by_day, "totals": totals,
-            "by_who": [{"who": k, **v} for k, v in ranked[:12]], "caveman": caveman.results()}
+            "by_who": [{"who": k, **v} for k, v in ranked[:12]], "caveman": caveman.results(),
+            "skipped": len(standing.skipped_since(days[0]))}
 
 
 def summary() -> dict:

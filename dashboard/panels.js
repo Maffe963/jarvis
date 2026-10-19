@@ -146,6 +146,7 @@
           <em>${esc(day)}</em></div>`).join("")}</div>
         <div class="key"><span style="--c:var(--accent)">Jarvis &amp; agents</span><span class="faint" style="--c:var(--accent)">Your Claude Code</span></div>`;
       if (d.caveman) html += caveman(d.caveman);
+      if (d.skipped) html += `<div class="meta">${d.skipped} scheduled agent job${d.skipped === 1 ? "" : "s"} skipped this week because a free check found nothing new (no Claude used).</div>`;
       html += h3("Who used it", "this week");
       const top = Math.max(1, ...d.by_who.map(w => w.week));
       html += d.by_who.length ? d.by_who.map(w => `<div class="card"><div class="top"><b>${esc(w.who)}</b><span class="meta" style="margin-left:auto">
