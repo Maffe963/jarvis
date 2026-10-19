@@ -126,17 +126,26 @@ def incoming_file(message: dict) -> tuple[str, str, str] | None:
     return None
 
 
+INCOMING_FOLDER = os.path.join(os.path.expanduser("~"), "Downloads", "From phone")
+
+
+def incoming_path(name: str) -> str:
+    """Where to save a file the user sent (from the phone or the dashboard): Downloads\\From phone, under its own
+    name with anything path-like removed, never overwriting a file already there."""
+    os.makedirs(INCOMING_FOLDER, exist_ok=True)
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", os.path.basename(name.replace("\\", "/"))).strip(" .") or "file"
+    stem, ext = os.path.splitext(name)
+    path, n = os.path.join(INCOMING_FOLDER, name), 1
+    while os.path.exists(path):
+        n += 1
+        path = os.path.join(INCOMING_FOLDER, f"{stem} ({n}){ext}")
+    return path
+
+
 def save_incoming(api: "TelegramAPI", file_id: str, name: str) -> str:
     """Save a file sent from the phone into Downloads\\From phone, never overwriting anything. Raises RuntimeError
     (with a message for the user) if it can't be downloaded."""
-    folder = os.path.join(os.path.expanduser("~"), "Downloads", "From phone")
-    os.makedirs(folder, exist_ok=True)
-    name = os.path.basename(name).strip() or "file"
-    stem, ext = os.path.splitext(name)
-    path, n = os.path.join(folder, name), 1
-    while os.path.exists(path):
-        n += 1
-        path = os.path.join(folder, f"{stem} ({n}){ext}")
+    path = incoming_path(name)
     try:
         data = api.download(file_id)
     except Exception as e:

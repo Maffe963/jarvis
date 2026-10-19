@@ -155,6 +155,11 @@ projects and any folder you've used Claude Code in, with commits, open pull requ
 **PC** CPU, memory, disk and the busiest processes, with Jarvis's own marked; **Memory** what Jarvis remembers,
 your lists, reminders and each agent's notebook. The chip in the header shows your tightest plan limit.
 
+**Sending files:** attach files to a command with 📎 next to the command box, by dropping them on the page, or by
+pasting an image into the box; they show as chips until you press Send. They're saved in `Downloads\From phone`
+(like files sent on Telegram, never overwriting anything; up to 50 MB each) and Jarvis is told where they are. An
+agent's drawer has the same 📎 for files meant for that agent.
+
 ## Starting with Windows
 
 ```bash
