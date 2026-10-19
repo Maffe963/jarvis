@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from datetime import datetime
 
 from tools import facts, usage
@@ -150,6 +151,9 @@ def _think_api(conversation_history: list[dict], system: str, confirm, acknowled
 
 # ---------- Claude Code subscription backend ----------
 
+INTERRUPT_WAIT_S = 3  # how long Claude Code gets to stop a turn before it's ended instead
+
+
 class ClaudeCodeSession:
     """One long-running `claude -p` that takes a message per turn over stream-json.
 
@@ -263,11 +267,34 @@ class ClaudeCodeSession:
         except OSError:
             pass
 
+    def _interrupt(self) -> bool:
+        """Stop the turn in progress without ending Claude Code; True once it has stopped."""
+        try:
+            self._proc.stdin.write(json.dumps({"type": "control_request", "request_id": uuid.uuid4().hex,
+                                               "request": {"subtype": "interrupt"}}) + "\n")
+            self._proc.stdin.flush()
+        except (OSError, AttributeError, ValueError):
+            return False
+        deadline = time.monotonic() + INTERRUPT_WAIT_S
+        while time.monotonic() < deadline:
+            try:
+                event = self._events.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if event is None:
+                self._proc = None
+                return False
+            if event.get("type") == "result":
+                return True
+        return False
+
     def ask(self, history: list[dict], confirm, acknowledge=None, on_text=None) -> str:
         self.warm_up()
         self.bridge.confirm = confirm
         self.bridge.acknowledge = acknowledge
         text = _build_prompt(history) if self._fresh else history[-1]["content"]
+        if not self._fresh and len(history) >= 2 and str(history[-2].get("content", "")).startswith("[The user interrupted"):
+            text = f"{history[-2]['content']}\n\n{text}"  # what was already done before they stopped me
         message = json.dumps({"type": "user", "message": {"role": "user", "content": (
             f"{screen_context()}\n{text}")}}) + "\n"
         try:
@@ -283,11 +310,13 @@ class ClaudeCodeSession:
         used, model = {}, ""  # this turn's usage, by API message
         while True:
             if self.cancelled.is_set():
-                # Ending the process stops Claude mid-thought; a fresh one starts now (replaying history)
-                # so the user's correction isn't slowed down.
-                self.close()
-                if self.cancelled is task_cancelled:
-                    threading.Thread(target=self.warm_up, daemon=True).start()
+                # Ask Claude Code to stop mid-thought, keeping the process (and the conversation) for the next
+                # request. If it doesn't stop quickly, end it; a fresh one starts now (replaying history) so the
+                # user's correction isn't slowed down.
+                if not self._interrupt():
+                    self.close()
+                    if self.cancelled is task_cancelled:
+                        threading.Thread(target=self.warm_up, daemon=True).start()
                 raise TaskInterrupted()
             try:
                 event = self._events.get(timeout=0.2)
