@@ -38,3 +38,9 @@ For each problem give the file and line, what goes wrong in a concrete case, and
 - Long-running processes (the team service, Telegram bots) must not grow without limit: cap lists, histories
   and logs.
 - Prefer the simplest code that does the job; flag code that is much longer or more complicated than needed.
+
+## 4. The changes list
+
+- Every change the user will notice adds a plain-English entry to `changes.json` ("done", newest first) and
+  updates "planned" (move finished items to "done", add what's coming). It feeds the dashboard's Changes tab and
+  the 9am morning report. A planned item's `run` may only use the steps in `tools/upkeep.py` `STEPS`.

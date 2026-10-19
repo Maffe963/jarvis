@@ -12,7 +12,7 @@ import anthropic
 
 from brain import NEW_MESSAGE, BackendError, TaskInterrupted, cancel_task, standby_backend, think, warm_up
 from memory.conversation import HISTORY_FILE, add_turn, load_history, save_history
-from tools import caveman, reminders
+from tools import caveman, reminders, upkeep
 from tools import offline, quick
 from tools.registry import activity, run_tool, task_cancelled, wait_for_running_tool
 from tools.system import quit_requested, set_announcer, standby_requested
@@ -285,6 +285,7 @@ def run_remote() -> None:
     start_team(lambda msg: print(f"Jarvis: {msg}"))  # the team service messages the phone itself
     reminders.start()
     caveman.start()  # sends the Caveman test's results when it ends
+    upkeep.start(busy)  # the 9am morning report and scheduled setup jobs (changes.json)
     exit_when_asked()
     print("Jarvis online (phone only). Message your bot on Telegram. Ctrl+C to quit.")
     try:
@@ -449,6 +450,7 @@ def run_voice() -> None:
     speak("Jarvis online.")
     reminders.start()
     caveman.start()  # sends the Caveman test's results when it ends
+    upkeep.start(busy)  # the 9am morning report and scheduled setup jobs (changes.json)
     start_team(lambda msg: (print(f"\nJarvis: {msg}"), speak(msg)))
     exit_when_asked()
 

@@ -1,0 +1,138 @@
+{
+  "_about": "What's changed in Jarvis and what's planned, shown in the dashboard's Changes tab and the 9am morning report. Update it with every change: add to 'done' (newest first) and move or add items in 'planned'.",
+  "done": [
+    {
+      "date": "2026-10-19",
+      "title": "Morning report and the Changes tab",
+      "detail": "This list on the dashboard, a 9am report in the feed when something's new, and scheduled setup jobs Jarvis runs on his own (like today's 11am add-on install)."
+    },
+    {
+      "date": "2026-10-19",
+      "title": "Claude Code add-ons (PR #16)",
+      "detail": "A setup script for your own Claude Code: Anthropic's document skills, Superpowers, code-review, hookify, Python checking, Context7, read-only GitHub and a status line. Jarvis says when Claude Code is waiting on you, and a guard blocks deleting whole drives. Trade Analyst and Portfolio Advisor get market news, indicators and fundamentals; Job Hunter and Travel Planner can read JavaScript-heavy pages."
+    },
+    {
+      "date": "2026-10-19",
+      "title": "Caveman test (PR #15)",
+      "detail": "For 3 days, half of Claude's sessions answer tersely. The Usage tab compares the cost, and the results go to your phone at the end."
+    },
+    {
+      "date": "2026-10-19",
+      "title": "Jarvis remembers things on his own (PR #14)",
+      "detail": "He quietly saves useful things you mention (people, preferences, plans, deadlines) and updates old notes. Never passwords, codes or full card or ID numbers."
+    },
+    {
+      "date": "2026-10-19",
+      "title": "See which agents are working (PR #13)",
+      "detail": "A spinning ring and sparks around busy agents in the 3D view, and a cog on their label; idle ones dim."
+    },
+    {
+      "date": "2026-10-19",
+      "title": "Agent upgrades (PR #12)",
+      "detail": "Travel Planner became a Chase and Amex points expert with daily deal scans. Job Hunter searches 3 times a day and only pings you for strong matches. Video Editor is tuned for TikTok and Reels and can bring in helpers. Telegram got quieter, the feed skips step-by-step messages, every bigger task gets its own agent, and your voice and Telegram chats show on the dashboard."
+    },
+    {
+      "date": "2026-10-19",
+      "title": "Attach files on the dashboard (PR #11)",
+      "detail": "Upload files with a command or a message to an agent."
+    },
+    {
+      "date": "2026-10-18",
+      "title": "Team restarts cleanly (PR #10)",
+      "detail": "Restarting the agent team no longer creates duplicate specialists."
+    },
+    {
+      "date": "2026-10-18",
+      "title": "Talk to agents from General (PR #9)",
+      "detail": "Send files and messages to any agent by name from the main Telegram chat."
+    },
+    {
+      "date": "2026-10-18",
+      "title": "Video Editor agent (PR #8)",
+      "detail": "Plus photos, videos and text files for every agent."
+    },
+    {
+      "date": "2026-10-18",
+      "title": "Faster responses (PR #7)",
+      "detail": "Quicker replies in Telegram and by voice: speech starts sooner, Telegram replies stream in, instant commands for apps and timers."
+    },
+    {
+      "date": "2026-10-18",
+      "title": "Dashboard tabs, themes, sign-in and Travel Planner (PR #6)",
+      "detail": "Tabs for tasks, sessions, usage, projects, the PC and memory; 3 new themes; a password sign-in for the website; and the Travel Planner agent."
+    },
+    {
+      "date": "2026-10-18",
+      "title": "Smaller fixes (PRs #2, #4, #5)",
+      "detail": "/off on Telegram works, windows move between screens without asking, and the phone hears when Jarvis is back after an update."
+    },
+    {
+      "date": "2026-10-18",
+      "title": "The agent team (PRs #1, #3)",
+      "detail": "A team led by Jarvis with its own Telegram topics, coders and a Reviewer, plus always-on specialists: Ghostwriter, Trade Analyst, Portfolio Advisor, Real Estate Advisor and Job Hunter."
+    },
+    {
+      "date": "2026-10-18",
+      "title": "3D dashboard",
+      "detail": "A live, interactive dashboard with several 3D themes, reachable from your phone over Tailscale."
+    },
+    {
+      "date": "2026-10-16",
+      "title": "Smarter and more reliable",
+      "detail": "A backup brain for when Claude is unreachable, a voice lock that only answers you, real browser control, background tasks, and quicker first words."
+    },
+    {
+      "date": "2026-10-14",
+      "title": "Phone control and memory",
+      "detail": "A private Telegram bot, files between PC and phone, Spotify, Google Calendar, long-term memory, and 'update yourself'."
+    },
+    {
+      "date": "2026-10-11",
+      "title": "The basics",
+      "detail": "Voice control of apps, windows, monitors and folders, interrupting and correcting Jarvis, and changing his voice."
+    }
+  ],
+  "planned": [
+    {
+      "when": "2026-10-19T11:00",
+      "title": "Install the Claude Code add-ons",
+      "detail": "Jarvis updates himself and runs the add-on setup on his own at 11am (or as soon as he's on after that), then reports here and on your phone.",
+      "who": "Jarvis",
+      "run": [
+        "update",
+        "addons"
+      ],
+      "id": "addons-install-2026-10-19"
+    },
+    {
+      "when": "2026-10-19T11:30",
+      "title": "Cut Claude usage",
+      "detail": "Measure where Jarvis's tokens go, then make the savings: cheaper models for routine jobs, a quick check before waking Claude for scheduled jobs, slimmer prompts, and shorter history.",
+      "who": "Claude Code"
+    },
+    {
+      "when": "2026-10-19",
+      "title": "Organise the PC's files",
+      "detail": "Starts with a few questions. Then a read-only survey, a proposed folder layout for you to approve, and moves with a dry run first, a log and an undo, never deleting anything.",
+      "who": "Claude Code + you"
+    },
+    {
+      "when": "2026-10-22",
+      "title": "Caveman test results",
+      "detail": "The comparison goes to your phone, and you decide whether to keep Caveman on.",
+      "who": "Jarvis"
+    },
+    {
+      "when": "",
+      "title": "Your to-dos",
+      "detail": "A free Alpha Vantage key in .env (ALPHAVANTAGE_API_KEY). A read-only GitHub token (setup_addons.py asks for it). Google connectors at claude.ai > Settings > Connectors. Gmail app password and TradeLog settings. code_repos.json and GITHUB_TOKEN for the coders. Set the PC's sleep to Never so it's always reachable.",
+      "who": "You"
+    },
+    {
+      "when": "",
+      "title": "On hold: Jarvis on the Mac",
+      "detail": "Shelved so the PC and Mac don't interfere with each other. The PC stays the one host.",
+      "who": ""
+    }
+  ]
+}

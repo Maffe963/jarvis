@@ -3,8 +3,8 @@
 // esc() and openDrawer(). Each view is fetched from /insights when shown, and refreshed while it stays open.
 (() => {
   const VIEWS = [["feed", "Feed"], ["tasks", "Tasks"], ["sessions", "Sessions"], ["usage", "Usage"],
-                 ["projects", "Projects"], ["system", "PC"], ["memory", "Memory"]];
-  const REFRESH = { tasks: 5000, sessions: 8000, usage: 30000, projects: 30000, system: 3000, memory: 20000 };
+                 ["projects", "Projects"], ["system", "PC"], ["memory", "Memory"], ["changes", "Changes"]];
+  const REFRESH = { tasks: 5000, sessions: 8000, usage: 30000, projects: 30000, system: 3000, memory: 20000, changes: 60000 };
   const aside = document.querySelector("aside"), nav = document.getElementById("views"), panel = document.getElementById("panel");
   let view = "feed", timer = null, wide = false;
   const opened = new Set();   // <details> left open, kept open across refreshes
@@ -38,6 +38,26 @@
 
   // ---------- views ----------
   const RENDER = {
+    changes(d) {
+      const OUTCOME = { done: ["✅", "var(--good)"], failed: ["⚠️", "var(--bad)"], waiting: ["⏳", "var(--you)"], skipped: ["⏭", "var(--bad)"] };
+      const day = s => new Date(s + "T12:00").toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      const plannedWhen = s => !s ? "" : s.includes("T") ? when(s) : day(s);
+      let html = h3("Planned", "what's coming next");
+      html += d.planned.length ? d.planned.map(p => {
+        const o = p.outcome && OUTCOME[p.outcome.status];
+        return `<div class="card"${o ? ` style="--c:${o[1]}"` : ""}><div class="top"><b>${o ? o[0] + " " : ""}${esc(p.title)}</b>
+          <span class="meta" style="margin-left:auto">${esc([plannedWhen(p.when), p.who].filter(Boolean).join(" · "))}</span></div>
+          <div class="meta">${esc(p.detail || "")}</div>${p.outcome ? `<div class="meta"><b>${esc(p.outcome.status)}:</b> ${esc(p.outcome.detail || "")}</div>` : ""}</div>`;
+      }).join("") : none("Nothing planned right now.");
+      html += h3("What's changed", "newest first");
+      let last = "";
+      html += d.done.map(c => {
+        const head = c.date !== last ? `<div class="meta" style="margin:10px 0 4px">${esc(day(c.date))}</div>` : "";
+        last = c.date;
+        return head + `<div class="card">${details("chg:" + c.date + c.title, `<b>${esc(c.title)}</b>`, `<div class="meta">${esc(c.detail || "")}</div>`)}</div>`;
+      }).join("");
+      return html;
+    },
     tasks(d) {
       const needs = d.agents.filter(a => a.status === "needs you").length + d.approvals;
       const next = d.scheduled[0];

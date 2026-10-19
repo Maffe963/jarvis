@@ -28,5 +28,6 @@ memory/dashboard_token
 memory/hook_token
 memory/usage*
 memory/caveman_*
+memory/upkeep.json*
 memory/dashboard_sessions.json*
 .claude/worktrees/

@@ -1,4 +1,5 @@
-"""Add-ons for your own Claude Code on this PC (run once: `python setup_addons.py`; `--dry-run` shows what it would do).
+"""Add-ons for your own Claude Code on this PC (run once: `python setup_addons.py`; `--dry-run` shows what it would do;
+`--unattended` skips the question about a GitHub token).
 
 Installs, for your Claude Code (not Jarvis's sessions, which run with these off):
   - Anthropic's document and example skills (Word, PDF, PowerPoint, Excel files; skill-creator, mcp-builder, ...)
@@ -36,6 +37,7 @@ The GitHub add-on needs a token. Make it read-only, so Claude can look but never
 """
 
 DRY = "--dry-run" in sys.argv
+UNATTENDED = "--unattended" in sys.argv  # run by Jarvis on a schedule (tools/upkeep.py): nobody to type a token
 done: list[str] = []
 todo: list[str] = []
 
@@ -80,6 +82,9 @@ def github_token() -> None:
         return
     if DRY:
         print(f"- GitHub token: would ask for a read-only token and save it as {TOKEN_VAR}")
+        return
+    if UNATTENDED:
+        todo.append("GitHub add-on: run `python setup_addons.py` once yourself to paste a read-only token")
         return
     print(TOKEN_HELP)
     token = getpass.getpass("Token (or just Enter to skip for now): ").strip()
@@ -160,6 +165,8 @@ def main() -> int:
     print("\nDone." if not todo else "\nDone, with a few things left for you:")
     for item in todo:
         print(f"  * {item}")
+    if UNATTENDED:
+        print("SUMMARY " + json.dumps({"done": done, "todo": todo}))
     print("\nAlso worth doing (can't be scripted):\n"
           "  * Google Workspace (Gmail, Calendar, Drive) for Claude: claude.ai > Settings > Connectors\n"
           "  * Market data for Trade Analyst and Portfolio Advisor: a free key from "
