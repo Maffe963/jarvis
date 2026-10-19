@@ -1,4 +1,5 @@
-"""Tools that let Jarvis control the Windows PC."""
+"""Tools that let Jarvis control the Windows PC. (On a Mac, the phone-only mode imports this for the parts that work
+anywhere; the PC-only tools aren't offered there, see registry.PORTABLE.)"""
 import ctypes
 import difflib
 import json
@@ -10,9 +11,13 @@ import webbrowser
 
 import psutil
 
-from tools import files, monitors
+from tools import files
 
-user32 = ctypes.windll.user32
+WINDOWS = os.name == "nt"
+if WINDOWS:
+    from tools import monitors
+
+    user32 = ctypes.windll.user32
 
 # Set by main.py so background tools (timers) can talk. Defaults to printing.
 _announce = print
@@ -354,7 +359,7 @@ def system_info() -> str:
     parts = [
         f"CPU {psutil.cpu_percent(interval=0.5):.0f}%",
         f"RAM {psutil.virtual_memory().percent:.0f}% used",
-        f"C: drive {psutil.disk_usage('C:/').percent:.0f}% full",
+        f"{'C: drive' if WINDOWS else 'disk'} {psutil.disk_usage('C:/' if WINDOWS else '/').percent:.0f}% full",
     ]
     battery = psutil.sensors_battery()
     if battery:

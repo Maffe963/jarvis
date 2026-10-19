@@ -14,7 +14,7 @@ from brain import NEW_MESSAGE, BackendError, TaskInterrupted, cancel_task, stand
 from memory.conversation import HISTORY_FILE, add_turn, load_history, save_history
 from tools import reminders
 from tools import offline, quick
-from tools.registry import activity, run_tool, task_cancelled, wait_for_running_tool
+from tools.registry import TOOL_MAP, activity, run_tool, task_cancelled, wait_for_running_tool
 from tools.system import quit_requested, set_announcer, standby_requested
 
 # Close Jarvis itself (never the computer). Bare "shut down" is left to Claude, which asks which one you mean.
@@ -174,6 +174,8 @@ def _respond(history: list[dict], user_text: str, confirm, say, history_file: st
 
     # Common simple commands ("pause", "volume up", "what time is it") are done instantly, without Claude.
     instant = quick.match(user_text.rsplit("]\n", 1)[-1])  # (phone messages start with a [note])
+    if instant and instant[0] is not None and instant[0] not in TOOL_MAP:
+        instant = None  # e.g. "lock the PC" while running on the Mac: Claude explains instead
     if instant:
         tool, value = instant
         if tool is None:
@@ -229,7 +231,19 @@ def start_phone():
     import telegram_bot
     import tray
 
-    return telegram_bot.start(respond, load_history, cancel_task, tray.turn_off)
+    return telegram_bot.start(respond, load_history, cancel_task, tray.turn_off if os.name == "nt" else _mac_off)
+
+
+MAC_OFF_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memory", "local", "mac_off")
+
+
+def _mac_off() -> None:
+    """/off on the Mac: stop Mac mode (mac.py) until it's started again, rather than just restarting Jarvis."""
+    import tray
+
+    os.makedirs(os.path.dirname(MAC_OFF_FLAG), exist_ok=True)
+    open(MAC_OFF_FLAG, "w").close()
+    tray._shutdown()
 
 
 def start_dashboard() -> None:
@@ -534,7 +548,9 @@ def run_voice() -> None:
 
 
 if __name__ == "__main__":
-    if "--text" in sys.argv:
+    if os.name != "nt" and "--text" not in sys.argv:
+        run_remote()  # on a Mac only phone control works (mac.py runs this while the PC is off)
+    elif "--text" in sys.argv:
         run_text()
     elif "--tray" in sys.argv:
         import tray

@@ -37,6 +37,10 @@ PROBLEM_WORDS = ("couldn't", "could not", "can't", "cannot", "don't know", "tool
 PHONE_NOTE = ("[Sent from the user's phone via Telegram, so your reply is read, not spoken: plain text, no "
               "markdown, though a short list or a link is fine. They may be away from the PC, so say clearly "
               "what happened.]\n")
+if os.name != "nt":
+    PHONE_NOTE += ("[Right now you're running on the user's Mac because their PC is off (Mac mode): you can't see or "
+                   "control the PC's screen, apps or sound, but email, the web, files on this Mac, reminders, lists and "
+                   "the agent team all work. If they ask for something on the PC, say it will work once the PC is on.]\n")
 HELP = ("Message me like you'd talk to Jarvis (text or a voice note), e.g. \"open Spotify on my left screen\" "
         "or \"what are my top jobs?\".\n\n"
         "After each task I send what actually happened and, if the screen changed, a screenshot.\n\n"
@@ -376,6 +380,11 @@ class PhoneJarvis:
                 self.send("🛑 Stopping.")
             else:
                 self.send("Nothing is running.")
+        elif command in ("/screenshot", "/status") and os.name != "nt":
+            from tools import system
+
+            self.send(f"💻 Your PC is off, so I'm running on your Mac: I can't see or control the PC's screen right "
+                      f"now.\n\nThis Mac: {system.system_info()}")
         elif command == "/screenshot":
             self._send_screenshot(arg.strip(), "Your screen right now.")
         elif command == "/status":
@@ -409,7 +418,7 @@ class PhoneJarvis:
 
             self.send("🔄 Restarting the agent team...")
             self.send("✅ The agent team is back; unfinished agents carry on." if client.restart_service()
-                      else "⚠️ The agent team didn't come back. Check memory/team/service.log on the PC.")
+                      else "⚠️ The agent team didn't come back. Check memory/local/service.log on the PC.")
             if what in ("team", "agents"):
                 return
         if self.working.is_set():
@@ -582,6 +591,8 @@ def launcher_running() -> bool:
     """Whether launcher.py is waiting in the background, so /on works again after Jarvis turns off."""
     import ctypes
 
+    if os.name != "nt":
+        return False  # Mac mode has no launcher: mac.py starts Jarvis
     handle = ctypes.windll.kernel32.OpenMutexW(0x00100000, False, "Local\\JarvisLauncher")
     if handle:
         ctypes.windll.kernel32.CloseHandle(handle)

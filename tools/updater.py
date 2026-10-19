@@ -8,8 +8,10 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PYTHON = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
-PYTHONW = os.path.join(ROOT, ".venv", "Scripts", "pythonw.exe")
+PYTHON = os.path.join(ROOT, ".venv", "Scripts", "python.exe") if os.name == "nt" else sys.executable
+PYTHONW = os.path.join(ROOT, ".venv", "Scripts", "pythonw.exe") if os.name == "nt" else sys.executable
+MAC_RESTART_NOTE = os.path.join(ROOT, "memory", "local", "restart_note.txt")  # read by mac.py when it restarts Jarvis
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 # Run in a separate process: waits for Jarvis (argv[1] = its PID) to exit, then starts argv[2:]. The new Jarvis
@@ -41,7 +43,7 @@ def _git(*args: str, timeout: int = 60) -> subprocess.CompletedProcess:
     if not git:
         raise RuntimeError("git isn't installed or isn't on PATH.")
     return subprocess.run([git, *args], cwd=ROOT, capture_output=True, text=True, timeout=timeout,
-                          creationflags=subprocess.CREATE_NO_WINDOW)
+                          creationflags=NO_WINDOW)
 
 
 def _pending() -> tuple[list[str], str | None]:
@@ -87,7 +89,7 @@ def update_jarvis() -> str:
     note = ""
     if "requirements.txt" in changed:
         pip = subprocess.run([PYTHON, "-m", "pip", "install", "-q", "-r", "requirements.txt"], cwd=ROOT,
-                             capture_output=True, text=True, timeout=900, creationflags=subprocess.CREATE_NO_WINDOW)
+                             capture_output=True, text=True, timeout=900, creationflags=NO_WINDOW)
         note = " New packages installed." if pip.returncode == 0 else f" (Installing new packages failed: {pip.stderr[-200:]})"
     changes = "\n".join(f"• {subject}" for subject in new[:10]) + (f"\n• and {len(new) - 10} more" if len(new) > 10 else "")
     _restart_after_reply(f"✅ Updated and back online. Installed {len(new)} update(s):\n{changes}{note}")
@@ -97,6 +99,14 @@ def update_jarvis() -> str:
 def _restart_after_reply(note: str = "✅ Restarted and back online.") -> None:
     """Start a fresh Jarvis once this one has exited (a new copy can't start while this one runs). The new one sends
     `note` to the phone once it's up."""
+    if os.name != "nt":  # Mac mode: mac.py starts Jarvis again as soon as this one exits, and passes the note on
+        os.makedirs(os.path.dirname(MAC_RESTART_NOTE), exist_ok=True)
+        with open(MAC_RESTART_NOTE, "w", encoding="utf-8") as f:
+            f.write(note)
+        from tools import system
+
+        system.quit_requested.set()
+        return
     os.environ["JARVIS_RESTART_NOTE"] = note  # the restart helper, and so the new Jarvis, inherit it
     args = [PYTHONW if "--tray" in sys.argv else PYTHON, os.path.join(ROOT, "main.py"), *sys.argv[1:]]
     subprocess.Popen([PYTHONW, "-c", RESTART_SCRIPT, str(os.getpid()), *args], cwd=ROOT,

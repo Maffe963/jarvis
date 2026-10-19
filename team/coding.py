@@ -3,7 +3,7 @@ reads pull requests, runs the checks, comments, and merges approved ones into th
 
 Only the repositories listed in code_repos.json can be worked on (see code_repos.example.json), and only the checks
 listed there can be run: agents never run arbitrary commands. Each coder works in its own git worktree under
-memory/team/worktrees, on a branch named agents/<name>-<id>, so several coders can work on one repository at once
+memory/local/worktrees, on a branch named agents/<name>-<id>, so several coders can work on one repository at once
 without getting in each other's way, and nobody touches your own checkout. Coders can only change files inside
 their worktree, never push to the main branch and never force-push. The Reviewer only merges the team's own pull
 requests (agents/ branches), only when GitHub says they can merge and no check has failed, and asks you first if
@@ -22,7 +22,7 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPOS_FILE = os.path.join(ROOT, "code_repos.json")
-WORKTREES = os.path.join(ROOT, "memory", "team", "worktrees")
+WORKTREES = os.path.join(ROOT, "memory", "local", "worktrees")
 BRANCH_PREFIX = "agents/"
 MAX_READ_CHARS = 30000
 MAX_OUTPUT_CHARS = 6000

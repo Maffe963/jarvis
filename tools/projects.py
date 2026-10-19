@@ -82,7 +82,7 @@ def run_project_command(command: str, options: dict | None = None) -> str:
     mode = spec.get("mode", "wait")
 
     if mode == "launch":  # long-running apps (a local web UI, ...): start and leave running
-        subprocess.Popen(argv, cwd=cwd, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        subprocess.Popen(argv, cwd=cwd, creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
         if spec.get("open_url"):
             threading.Timer(4, lambda: system.open_url(spec["open_url"])).start()
         return f"Started {name}." + (f" Opening {spec['open_url']} shortly." if spec.get("open_url") else "")
@@ -90,7 +90,7 @@ def run_project_command(command: str, options: dict | None = None) -> str:
     def run() -> str:
         try:
             proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                  timeout=spec.get("timeout", 120), creationflags=subprocess.CREATE_NO_WINDOW)
+                                  timeout=spec.get("timeout", 120), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             output = _clean(proc.stdout + ("\n" + proc.stderr if proc.stderr.strip() else ""))
             if proc.returncode != 0:
                 output = f"(exited with code {proc.returncode})\n{output}"

@@ -1,8 +1,15 @@
 """Every tool Jarvis can use, shared by both backends (direct API and Claude Code subscription)."""
+import os
 import threading
+import types
 
-from tools import (background, browser, desktop, facts, finder, gcal, lists, messaging, monitors, phone, projects, reminders,
-                   spotify, ui, updater, voice_settings, watchers, weather)
+from tools import (background, browser, desktop, facts, finder, gcal, lists, messaging, phone, projects, reminders,
+                   spotify, updater, watchers, weather)
+
+if os.name == "nt":
+    from tools import monitors, ui, voice_settings
+else:  # a Mac running the phone-only mode: no screens, windows or voice to drive
+    monitors = ui = voice_settings = types.SimpleNamespace(TOOLS=[], TOOL_MAP={}, confirmation=lambda name, inputs: None)
 from tools.files import (grant_folder_access, list_files, list_folder_access, read_file,
                          revoke_folder_access, write_file)
 from tools.search import web_search
@@ -131,6 +138,22 @@ TOOL_MAP = {
     **messaging.TOOL_MAP,
     **SYSTEM_TOOL_MAP,
 }
+
+# Tools that work on any computer (they use the internet, files, or Jarvis's own memory). Everywhere but Windows,
+# only these are offered: the rest drive the PC's screen, apps and sound.
+PORTABLE = {
+    "web_search", "read_file", "write_file", "list_files", "grant_folder_access", "revoke_folder_access",
+    "list_folder_access", "set_reminder", "list_reminders", "cancel_reminder", "get_weather", "add_to_list",
+    "remove_from_list", "clear_list", "get_list", "remember", "forget", "list_facts", "check_email", "send_email",
+    "read_discord", "send_discord", "list_contacts", "calendar_events", "add_calendar_event", "send_to_phone",
+    "start_background_task", "background_tasks", "background_task_result", "cancel_background_task",
+    "system_info", "set_timer", "spotify_playlists", "spotify_search", "spotify_play", "spotify_control",
+    "spotify_now_playing", "team_status", "create_agent", "message_agent", "stop_agent", "agent_result",
+    "team_messages", "answer_approval", "send_dashboard_link", "restart_service", "update_jarvis",
+}
+if os.name != "nt":
+    TOOLS = [t for t in TOOLS if t["name"] in PORTABLE]
+    TOOL_MAP = {name: fn for name, fn in TOOL_MAP.items() if name in PORTABLE}
 
 
 def _duration(seconds) -> str:

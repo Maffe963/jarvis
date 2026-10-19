@@ -587,6 +587,8 @@ def restore() -> int:
                 agent.status = "done" if agent.result else "stopped"
             if agent.kind == "standing" and agent.name not in standing.definitions() and agent.status not in FINISHED:
                 agent.status = "stopped"  # removed from standing_agents.json, or "enabled": false
+            if agent.workspace and not os.path.isdir(agent.workspace.get("path", "")):
+                continue  # a coder whose working copy is on the other computer: it carries on there
             if agent.status not in FINISHED:
                 resumed.append(agent)
     for agent in resumed:

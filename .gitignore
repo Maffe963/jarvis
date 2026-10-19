@@ -22,9 +22,11 @@ memory/models/
 memory/voice_print.json
 memory/dashboard_history.json
 memory/dashboard.json
-memory/team/
+memory/team
+memory/team-before-sync-*/
 code_repos.json
 memory/dashboard_token
 memory/usage*
 memory/dashboard_sessions.json*
 .claude/worktrees/
+memory/local/

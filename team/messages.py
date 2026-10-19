@@ -9,6 +9,9 @@ import threading
 import time
 
 FOLDER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "memory", "team")
+# What belongs to this computer only (the running service's address, its lock and log, coders' working copies).
+# memory/team itself can be shared between your PC and Mac through OneDrive (see sync_setup.py); this never is.
+LOCAL = os.path.join(os.path.dirname(FOLDER), "local")
 LOG_FILE = os.path.join(FOLDER, "messages.jsonl")
 SEEN_FILE = os.path.join(FOLDER, "seen.json")
 KEEP = 5000  # older messages are dropped when the service starts

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import psutil
 
 from memory.conversation import HISTORY_FILE
-from team import coding, messages, standing
+from team import client, coding, messages, standing
 from tools import background, facts, lists, reminders, usage
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -327,7 +327,7 @@ def projects(team: dict) -> list[dict]:
 def system() -> dict:
     cpus = psutil.cpu_count() or 1
     mine = {os.getpid()}
-    service = _json_file(os.path.join(messages.FOLDER, "service.json"), {}).get("pid")
+    service = _json_file(client.SERVICE_FILE, {}).get("pid")
     labels = {os.getpid(): "Jarvis"}
     if service:
         labels[service] = "Team service"

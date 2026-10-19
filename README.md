@@ -92,7 +92,7 @@ agent, and approvals have Yes/No buttons. The "All messages" topic shows everyth
 List the repositories they may work on, and the checks they may run (tests, lint), in `code_repos.json` (copy
 `code_repos.example.json`), and put a GitHub token in `GITHUB_TOKEN` (fine-grained, with Contents and Pull
 requests read/write on those repositories). Each coder works in its own copy of the repository
-(`memory/team/worktrees/`) on its own `agents/...` branch, so several can work at once and your own checkout is
+(`memory/local/worktrees/`) on its own `agents/...` branch, so several can work at once and your own checkout is
 never touched. They can only change files in that copy and only run the listed checks. When done they push and open
 a pull request; the Reviewer reads it, runs the checks, comments, and merges it into main once it's good (it only
 merges the team's own pull requests, never with failing checks or conflicts). Set `JARVIS_AGENT_MERGE=ask` to
@@ -154,6 +154,33 @@ your plan's 5-hour and weekly limits, tokens per day and who used them; **Projec
 projects and any folder you've used Claude Code in, with commits, open pull requests, agents and sessions on each;
 **PC** CPU, memory, disk and the busiest processes, with Jarvis's own marked; **Memory** what Jarvis remembers,
 your lists, reminders and each agent's notebook. The chip in the header shows your tightest plan limit.
+
+## Using Jarvis from your Mac when the PC is off
+
+Your Mac can stand in for the PC: while the PC is off or asleep, Jarvis runs on the Mac in phone-only mode. Your
+Jarvis bot on Telegram answers, the agents (and their Telegram topics) carry on, email, the web, reminders and the
+dashboard work; only things that need the PC's screen, apps or sound wait until it's back. You get a message on your
+phone each time the Mac takes over or hands back. The agents' memory is shared through OneDrive, so they're the same
+agents on both.
+
+1. **On the PC** (once): turn Jarvis off, run `.venv\Scripts\python.exe sync_setup.py`, then start Jarvis again.
+   This moves the team's memory into `OneDrive\Jarvis\team`.
+2. **On the Mac**: install [Claude Code](https://claude.com/claude-code) and sign in (`claude`, then `/login`), and
+   OneDrive (signed in to the same account). Then:
+
+   ```bash
+   git clone https://github.com/Maffe963/jarvis.git && cd jarvis
+   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+   ```
+
+   Copy your `.env` from the PC into the Mac's `jarvis` folder (it holds your tokens; send it to yourself privately,
+   or copy it with a USB stick, not by email).
+3. **On the Mac**: `.venv/bin/python sync_setup.py` (links to the shared memory), then
+   `.venv/bin/python mac.py install` so Mac mode starts whenever you log in.
+
+Mac mode waits while the PC is on (the PC's team service leaves a heartbeat in the shared folder every 30 seconds)
+and takes over about 3 minutes after the PC goes off. `/off` from your phone stops Mac mode; start it again with
+`.venv/bin/python mac.py`. "Update yourself" works on the Mac too. The Mac's log is `memory/local/mac.log`.
 
 ## Starting with Windows
 

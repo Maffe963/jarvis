@@ -5,7 +5,7 @@
 It runs the agents (team/agents.py), keeps them in memory/team/ so they carry on after a restart, runs the team's
 Telegram bot (each agent gets its own topic in your team group, see team/telegram_team.py), and serves a small API
 on this PC that Jarvis uses to lead the team, follow along and read every message. Only one runs at a time; it
-keeps running when Jarvis turns off. Output goes to memory/team/service.log.
+keeps running when Jarvis turns off. Output goes to memory/local/service.log.
 """
 import json
 import os
@@ -26,7 +26,7 @@ load_dotenv(os.path.join(ROOT, ".env"))
 from team import agents, approvals, client, events, messages  # noqa: E402
 from tools import system  # noqa: E402
 
-LOG_FILE = os.path.join(messages.FOLDER, "service.log")
+LOG_FILE = os.path.join(messages.LOCAL, "service.log")
 MAX_LOG_BYTES = 1_000_000
 TOKEN = secrets.token_urlsafe(24)
 VERSION = client.code_version()
@@ -148,16 +148,17 @@ def _shutdown() -> None:
 
 
 def _forget() -> None:
-    try:
-        with open(client.SERVICE_FILE, "r", encoding="utf-8") as f:
-            if json.load(f).get("pid") == os.getpid():
-                os.remove(client.SERVICE_FILE)
-    except (OSError, ValueError):
-        pass
+    for path in (client.SERVICE_FILE, client.OLD_SERVICE_FILE):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                if json.load(f).get("pid") == os.getpid():
+                    os.remove(path)
+        except (OSError, ValueError):
+            pass
 
 
 def _redirect_output() -> None:
-    os.makedirs(messages.FOLDER, exist_ok=True)
+    os.makedirs(messages.LOCAL, exist_ok=True)
     if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > MAX_LOG_BYTES:
         os.replace(LOG_FILE, LOG_FILE + ".old")
     log = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
@@ -170,8 +171,8 @@ _lock_file = None
 def _claim_single_instance() -> bool:
     """False if another team service is running (two would run every agent twice). The lock goes with the process."""
     global _lock_file
-    os.makedirs(messages.FOLDER, exist_ok=True)
-    _lock_file = open(os.path.join(messages.FOLDER, "service.lock"), "a+")
+    os.makedirs(messages.LOCAL, exist_ok=True)
+    _lock_file = open(os.path.join(messages.LOCAL, "service.lock"), "a+")
     try:
         if os.name == "nt":
             import msvcrt
@@ -204,6 +205,9 @@ def main() -> None:
     server.daemon_threads = True
     with open(client.SERVICE_FILE, "w", encoding="utf-8") as f:
         json.dump({"port": server.server_address[1], "token": TOKEN, "pid": os.getpid(), "version": VERSION}, f)
+    from team import handoff
+
+    handoff.start_heartbeat()  # tells a Mac in Mac mode that this machine is on
 
     from team import telegram_team
 

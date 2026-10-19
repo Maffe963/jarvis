@@ -15,7 +15,8 @@ import urllib.request
 from team import approvals, events, messages
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SERVICE_FILE = os.path.join(messages.FOLDER, "service.json")  # where the running service listens, and its key
+SERVICE_FILE = os.path.join(messages.LOCAL, "service.json")  # where the running service listens, and its key
+OLD_SERVICE_FILE = os.path.join(messages.FOLDER, "service.json")  # where versions before Mac mode kept it
 MAX_AGENTS = 5
 
 
@@ -37,7 +38,22 @@ def _service() -> dict | None:
         with open(SERVICE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
+        pass
+    try:  # a service started before this update, so it can still be found and stopped
+        with open(OLD_SERVICE_FILE, "r", encoding="utf-8") as f:
+            found = json.load(f)
+        return found if _alive(found.get("pid")) else None
+    except (OSError, ValueError):
         return None
+
+
+def _alive(pid) -> bool:
+    import psutil
+
+    try:
+        return bool(pid) and psutil.pid_exists(int(pid))
+    except (ValueError, psutil.Error):
+        return False
 
 
 def _request(path: str, body: dict | None = None, timeout: float = 10):
@@ -55,7 +71,7 @@ def _request(path: str, body: dict | None = None, timeout: float = 10):
 def ping() -> dict | None:
     try:
         return _request("/ping", timeout=3)
-    except (OSError, ValueError, ConnectionError):
+    except (OSError, ValueError, ConnectionError, KeyError, TypeError):  # not running, or a damaged service file
         return None
 
 
@@ -89,7 +105,7 @@ def ensure_running(wait_s: float = 20) -> bool:
             if (ping() or {}).get("version") == version:
                 return True
             time.sleep(0.3)
-        print("[team] the team service didn't start; see memory/team/service.log")
+        print("[team] the team service didn't start; see memory/local/service.log")
         return False
 
 
@@ -118,7 +134,7 @@ def restart_service() -> bool:
 
 def call(function: str, **inputs):
     if not ensure_running():
-        return "The agent team couldn't be started (see memory/team/service.log)."
+        return "The agent team couldn't be started (see memory/local/service.log)."
     try:
         return _request("/call", {"name": function, "input": inputs}, timeout=30)["result"]
     except (OSError, ValueError, ConnectionError, KeyError) as e:
@@ -226,7 +242,7 @@ def restart_team() -> str:
     """The same as /restart team on Telegram: the service restarts, and every agent (specialists included) carries
     on where it was."""
     if not restart_service():
-        return "The agent team didn't come back after restarting. Check memory/team/service.log on the PC."
+        return "The agent team didn't come back after restarting. Check memory/local/service.log on the PC."
     return "The agent team restarted; the specialists and any unfinished agents carried on where they were."
 
 
