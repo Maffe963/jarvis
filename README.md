@@ -103,6 +103,8 @@ finish: each message or scheduled job is a new piece of work, and between jobs n
 while idle. Each keeps a notebook (`memory/team/notebooks/`) as its long-term memory, has its own Telegram topic to
 chat in, and doesn't count towards the 5-agent limit. Talk to one in its topic, or through Jarvis ("tell my Trade
 Analyst I'm taking Friday off").
+A scheduled job can have a free check first (`"only_if"`: `new_emails`, `trades_today`). When it finds nothing to do,
+the job is skipped without waking Claude. An agent can also run on a cheaper model (`"model": "haiku"`).
 
 - **Ghostwriter** learns how you write from your sent Gmail and checks your inbox 5 times a day. Each reply it
   drafts comes to its topic with Send / No buttons and is only sent if you tap Send. Needs Gmail set up.
@@ -216,6 +218,8 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
 - `JARVIS_MODEL`: in subscription mode an alias like `sonnet` or `opus` (default `sonnet`); in API
   mode a full model ID (default `claude-sonnet-5-5`).
 - `JARVIS_EFFORT`: subscription mode only, `low` (default, fastest) up to `max`.
+- `JARVIS_REFRESH_AT_TOKENS` (default 60000): once a conversation is this big, Jarvis starts a fresh one in a
+  quiet moment (with the recent turns replayed), because every step re-reads the whole thing.
 - `JARVIS_CAVEMAN`: a test of [Caveman](https://github.com/JuliusBrussee/caveman) (terse replies to save tokens). `test` (default): for `JARVIS_CAVEMAN_DAYS` days (default 3) each Claude session randomly has it on or off, the dashboard's Usage tab compares them, and the results go to your phone when it ends. `on` keeps it on; `off` skips it.
 - `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`: a more natural voice.
 

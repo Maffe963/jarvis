@@ -63,6 +63,7 @@ CHANGING_TOOLS = ("write_file", "run_project_command", "write_code", "edit_code"
 KINDS = ("agent", "coder")  # what Jarvis can start; the Reviewer starts by itself, standing agents from their file
 TEMPORARY = ("agent", "coder", "reviewer")  # agents that finish (not standing ones)
 STANDING_HISTORY = 40  # turns a standing agent keeps; older ones live on in its notebook and the message log
+SCHEDULED_REPLAY = 4  # turns replayed for a scheduled job (its notebook carries the rest), instead of the usual 12
 STANDING_PROMPT = """You are {name}, one of the user's standing specialists on a team led by Jarvis, the user's
 personal assistant. You stay on the team for good: each message (from the user, from Jarvis, from a teammate, or a
 scheduled job) is a new job. Do it, reply, and wait for the next one. Your replies are posted in your own Telegram
@@ -439,9 +440,11 @@ def _standing_turn(agent: "Agent", message: str) -> str:
     del agent.history[:-STANDING_HISTORY]
     agent.set_status("working", _short(message, 120))
     session = agent.session = brain.ClaudeCodeSession(prompt, allowed, agent.cancelled, agent.log, agent._tools(),
-                                                     label=agent.name)
+                                                     label=agent.name, model=spec.get("model"))
+    scheduled = message.startswith("(Scheduled job")
     try:
-        reply = session.ask(agent.history, lambda q: approvals.ask(q, agent.name, agent.id))
+        reply = session.ask(agent.history[-SCHEDULED_REPLAY:] if scheduled else agent.history,
+                            lambda q: approvals.ask(q, agent.name, agent.id))
     finally:
         session.dispose()
         agent.session = None
