@@ -263,8 +263,7 @@ class PhoneJarvis:
             self.cancel_task()  # a restart shouldn't wait for the task in progress
         from tools import updater
 
-        os.environ["JARVIS_STARTED_FROM_PHONE"] = "1"  # the new Jarvis says when it's back
-        self.send("🔄 Restarting Jarvis. I'll message you when I'm back.")
+        self.send("🔄 Restarting Jarvis. I'll message you when I'm back.")  # the new Jarvis says so
         updater._restart_after_reply()
 
     def _off(self) -> None:
@@ -408,7 +407,10 @@ def start(respond, history_loader, cancel_task, turn_off) -> PhoneJarvis | None:
     bot = PhoneJarvis(token, int(allowed) if allowed.isdigit() else None, respond, history_loader, cancel_task, turn_off)
     bot.start()
     active = bot
-    if os.environ.pop("JARVIS_STARTED_FROM_PHONE", ""):
+    restarted = os.environ.pop("JARVIS_RESTART_NOTE", "")  # set by a restart or an update (tools/updater.py)
+    if restarted:
+        bot.send(restarted)
+    if os.environ.pop("JARVIS_STARTED_FROM_PHONE", "") and not restarted:
         bot.send("✅ Jarvis is on. Send /help to see what I can do.")
     return bot
 

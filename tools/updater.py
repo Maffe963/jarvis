@@ -12,15 +12,27 @@ PYTHON = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
 PYTHONW = os.path.join(ROOT, ".venv", "Scripts", "pythonw.exe")
 
 
-# Run in a separate process: waits for Jarvis (argv[1] = its PID) to exit, then starts argv[2:].
+# Run in a separate process: waits for Jarvis (argv[1] = its PID) to exit, then starts argv[2:]. The new Jarvis
+# messages the phone when it's back (JARVIS_RESTART_NOTE); if it quits within a minute instead, this says so.
 RESTART_SCRIPT = (
-    "import ctypes, subprocess, sys, time\n"
+    "import ctypes, json, os, subprocess, sys, time, urllib.request\n"
     "pid = int(sys.argv[1])\n"
     "handle = ctypes.windll.kernel32.OpenProcess(0x00100000, False, pid)\n"
     "if handle:\n"
     "    ctypes.windll.kernel32.WaitForSingleObject(handle, 60000)\n"
     "time.sleep(1)\n"
-    "subprocess.Popen(sys.argv[2:])\n"
+    "proc = subprocess.Popen(sys.argv[2:])\n"
+    "time.sleep(60)\n"
+    "token, chat = os.environ.get('TELEGRAM_BOT_TOKEN', ''), os.environ.get('TELEGRAM_ALLOWED_USER_ID', '')\n"
+    "if proc.poll() is not None and token and chat.isdigit():\n"
+    "    text = \"⚠️ Jarvis didn't come back after restarting. Check memory/jarvis.log on the PC, or send /on.\"\n"
+    "    req = urllib.request.Request(f'https://api.telegram.org/bot{token}/sendMessage',\n"
+    "                                 data=json.dumps({'chat_id': int(chat), 'text': text}).encode(),\n"
+    "                                 headers={'Content-Type': 'application/json'})\n"
+    "    try:\n"
+    "        urllib.request.urlopen(req, timeout=20)\n"
+    "    except Exception:\n"
+    "        pass\n"
 )
 
 
@@ -77,12 +89,15 @@ def update_jarvis() -> str:
         pip = subprocess.run([PYTHON, "-m", "pip", "install", "-q", "-r", "requirements.txt"], cwd=ROOT,
                              capture_output=True, text=True, timeout=900, creationflags=subprocess.CREATE_NO_WINDOW)
         note = " New packages installed." if pip.returncode == 0 else f" (Installing new packages failed: {pip.stderr[-200:]})"
-    _restart_after_reply()
+    changes = "\n".join(f"• {subject}" for subject in new[:10]) + (f"\n• and {len(new) - 10} more" if len(new) > 10 else "")
+    _restart_after_reply(f"✅ Updated and back online. Installed {len(new)} update(s):\n{changes}{note}")
     return f"Installed {len(new)} update(s).{note} Restarting now; I'll be back in a few seconds."
 
 
-def _restart_after_reply() -> None:
-    """Start a fresh Jarvis once this one has exited (a new copy can't start while this one runs)."""
+def _restart_after_reply(note: str = "✅ Restarted and back online.") -> None:
+    """Start a fresh Jarvis once this one has exited (a new copy can't start while this one runs). The new one sends
+    `note` to the phone once it's up."""
+    os.environ["JARVIS_RESTART_NOTE"] = note  # the restart helper, and so the new Jarvis, inherit it
     args = [PYTHONW if "--tray" in sys.argv else PYTHON, os.path.join(ROOT, "main.py"), *sys.argv[1:]]
     subprocess.Popen([PYTHONW, "-c", RESTART_SCRIPT, str(os.getpid()), *args], cwd=ROOT,
                      creationflags=subprocess.DETACHED_PROCESS)
