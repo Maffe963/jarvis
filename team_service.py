@@ -207,6 +207,15 @@ def main() -> None:
 
     telegram_team.start()  # before restoring, so it sees the resumed agents' messages
     print(f"[team] resumed {agents.restore()} agent(s); listening on port {server.server_address[1]}")
+    print(f"[team] standing agents: {agents.sync_standing()}")
+    from team import standing
+
+    def run_job(name: str, text: str) -> None:
+        agent = next((a for a in agents.active() if a.kind == "standing" and a.name == name), None)
+        if agent:
+            agent.put(text)
+
+    standing.scheduler(run_job)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

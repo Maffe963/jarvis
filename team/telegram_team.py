@@ -173,8 +173,12 @@ class TeamBot:
         kind = e["type"]
         if kind == "agent":
             thread = self._make_topic(e["agent"], e["name"], e["role"])
-            self.post(f"📋 {e['name']} ({e['role']}) is on it.\n\nTask:\n{e['task']}\n\n"
-                      "Write here to talk to it.", thread)
+            if e.get("kind") == "standing":
+                self.post(f"⭐ {e['name']} is on your team for good: {e['role']}.\n\nWrite here any time to talk "
+                          "to it. It keeps notes on what it learns, and its scheduled reports show up here.", thread)
+            else:
+                self.post(f"📋 {e['name']} ({e['role']}) is on it.\n\nTask:\n{e['task']}\n\n"
+                          "Write here to talk to it.", thread)
             self.post(f"🆕 {e['name']} joined the team: {e['role']}", self._all_topic())
         elif kind == "message":
             sender, to, text = e["sender"], e["to"], e["text"]
@@ -206,6 +210,21 @@ class TeamBot:
                 try:
                     self._call("editForumTopic", chat_id=self.chat_id, message_thread_id=thread,
                                name=f"{MARKS[e['status']]} {agent.name} · {agent.role}"[:128])
+                    self.state.setdefault("marked", [])
+                    if e["agent"] not in self.state["marked"]:
+                        self.state["marked"].append(e["agent"])
+                        self._save()
+                except Exception:
+                    pass
+        elif kind == "status" and e["agent"] in self.state.get("marked", []):  # a standing agent is back
+            agent, thread = agents.find(e["agent"]), self._topic(e["agent"])
+            self.state["marked"].remove(e["agent"])
+            self._save()
+            if agent and thread:
+                try:
+                    self._call("editForumTopic", chat_id=self.chat_id, message_thread_id=thread,
+                               name=f"🤖 {agent.name} · {agent.role}"[:128])
+                    self.post("▶️ Back on the team.", thread)
                 except Exception:
                     pass
         elif kind == "approval":

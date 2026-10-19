@@ -15,6 +15,9 @@ efficiency and approved it (or it has had MAX_REVIEW_ROUNDS tries, in which case
 Coders are agents just for programming (team/coding.py): each works in its own copy of a repository on its own
 branch, runs the repository's checks, and opens a pull request; the Reviewer reviews pull requests and merges the
 good ones into the main branch.
+
+Standing agents (team/standing.py, defined in standing_agents.json) are specialists that stay on the team for good:
+they never finish, keep a notebook, run on a schedule, and don't count towards MAX_AGENTS.
 """
 import json
 import os
@@ -22,7 +25,7 @@ import threading
 import time
 import uuid
 
-from team import approvals, coding, events, messages
+from team import approvals, coding, events, messages, standing
 from tools import system
 
 MAX_AGENTS = 5
@@ -51,11 +54,31 @@ RESUMED = ("(The team service restarted while you were working, so your last ste
            "Carry on from where you left off.)")
 ALONE_GRACE_S = 60  # a waiting agent whose teammates have all finished wraps up after this long
 USER_IDS = ("user", "jarvis", "the user")
+STOP_NOTE = "(stopped)"  # wakes a waiting agent when it's stopped; never a job
 
 # ----- review -----
 # using any of these means the work gets reviewed
 CHANGING_TOOLS = ("write_file", "run_project_command", "write_code", "edit_code", "delete_code", "commit", "push")
-KINDS = ("agent", "coder")  # what Jarvis can start; the Reviewer starts by itself
+KINDS = ("agent", "coder")  # what Jarvis can start; the Reviewer starts by itself, standing agents from their file
+TEMPORARY = ("agent", "coder", "reviewer")  # agents that finish (not standing ones)
+STANDING_HISTORY = 40  # turns a standing agent keeps; older ones live on in its notebook and the message log
+STANDING_PROMPT = """You are {name}, one of the user's standing specialists on a team led by Jarvis, the user's
+personal assistant. You stay on the team for good: each message (from the user, from Jarvis, from a teammate, or a
+scheduled job) is a new job. Do it, reply, and wait for the next one. Your replies are posted in your own Telegram
+topic, so write for a phone: plain text (no ** or #), short paragraphs, lists where they help.
+Your role: {role}
+
+Your instructions:
+{task}
+
+Your notebook, your long-term memory (what you've learned about the user and their goals, decisions, follow-ups):
+{notebook}
+
+Keep the notebook current with notebook_add, and tidy it with notebook_rewrite when it gets long; anything not in
+it is forgotten after a while. Other agents on the team: {team}; message them with send_message, or Jarvis with
+to="jarvis". Use ask_user only for what really needs the user. You can't use the screen, mouse, keyboard or apps.
+You give information and analysis, not professional financial, legal or tax advice: say so when it matters, and
+never present a guess as a fact. Today is {today}."""
 MAX_REVIEW_ROUNDS = 3
 REVIEWER_NAME = "Reviewer"
 REVIEWER_ROLE = "Reviews teammates' code and files for safety, correctness and efficiency"
@@ -214,14 +237,16 @@ class Agent:
             return run
 
         extra = {}
-        if self.kind == "coder" and self.workspace:
+        if self.kind == "standing":
+            extra = standing.tools_for(self, standing.definition(self.name))
+        elif self.kind == "coder" and self.workspace:
             extra = coding.coder_tools(self.workspace)
         elif self.kind == "reviewer":
             extra = coding.reviewer_tools(lambda q: approvals.ask(q, self.name, self.id))
         extra = {name: (schema, logged(name, handler)) for name, (schema, handler) in extra.items()}
 
         text = {"type": "string"}
-        return extra | {
+        common = {
             "send_message": ({"name": "send_message", "description": "Send a short message to a teammate (by name) "
                               "or to 'jarvis'. They receive it after their current step.",
                               "input_schema": {"type": "object", "properties": {"to": text, "text": text},
@@ -250,6 +275,9 @@ class Agent:
                                     "summary": {"type": "string", "description": "What you did and why"}},
                                     "required": ["files", "summary"]}}, request_review),
         })
+        if self.kind == "standing":  # never finishes and isn't reviewed; just its jobs
+            common = {k: v for k, v in common.items() if k not in ("finish", "request_review")}
+        return extra | common
 
     # ----- running -----
 
@@ -262,7 +290,7 @@ class Agent:
             if message is not None:
                 return message
             waited += 5
-            others = [a for a in active() if a is not self]
+            others = [a for a in active() if a is not self and a.kind != "standing"]  # those never finish
             if others or self.status == "needs you":
                 alone_since = None
             else:
@@ -281,6 +309,9 @@ class Agent:
         return None
 
     def run(self, resumed: bool = False) -> None:
+        if self.kind == "standing":
+            _run_standing(self, resumed)
+            return
         import brain
         from tools import background
 
@@ -328,7 +359,7 @@ class Agent:
             self.session.close()
         if _shutting_down.is_set():
             return
-        self.session.bridge.stop()
+        self.session.dispose()
         if self.workspace:
             note = coding.remove_workspace(self.workspace)
             if note and self.result:
@@ -342,6 +373,95 @@ class Agent:
             _report(self)
         elif self.status not in FINISHED:
             self.set_status("stopped")
+
+
+def _standing_turn(agent: "Agent", message: str) -> str:
+    """One job for a standing agent, in a fresh Claude Code process that's closed afterwards (so an idle standing
+    agent uses nothing). Its recent turns are replayed, and its notebook is part of its instructions."""
+    import brain
+    from tools import background
+
+    spec = standing.definition(agent.name)
+    team = ", ".join(f"{a.name} ({a.role})" for a in active() if a is not agent) or "none"
+    prompt = STANDING_PROMPT.format(name=agent.name, role=agent.role, task=spec.get("instructions", agent.task),
+                                    notebook=standing.notebook_for_prompt(agent.name),
+                                    team=team, today=time.strftime("%A, %B %d, %Y"))
+    allowed = set(spec.get("tools", [])) & background.ALLOWED  # never more than task agents get
+    agent.history.append({"role": "user", "content": message})
+    del agent.history[:-STANDING_HISTORY]
+    agent.set_status("working", _short(message, 120))
+    session = agent.session = brain.ClaudeCodeSession(prompt, allowed, agent.cancelled, agent.log, agent._tools())
+    try:
+        reply = session.ask(agent.history, lambda q: approvals.ask(q, agent.name, agent.id))
+    finally:
+        session.dispose()
+        agent.session = None
+    agent.history.append({"role": "assistant", "content": reply})
+    standing.job_done(agent)  # e.g. the emails it was shown now count as handled
+    return reply
+
+
+def _run_standing(agent: "Agent", resumed: bool) -> None:
+    import brain
+
+    message = RESUMED if resumed and agent.status == "working" and agent.history else None
+    while not agent.cancelled.is_set():
+        if message is None:
+            if agent.status != "waiting":
+                agent.set_status("waiting", "ready for its next job")
+            while message is None and not agent.cancelled.is_set():
+                message = agent._next(timeout=5)
+                if message == STOP_NOTE:
+                    message = None
+            if message is None or agent.cancelled.is_set():
+                break
+        try:
+            reply = _standing_turn(agent, message)
+        except brain.TaskInterrupted:
+            break
+        except Exception as e:  # one failed job doesn't end a standing agent
+            if _shutting_down.is_set():
+                return
+            reply = f"(That job failed: {e})"
+            agent.history.append({"role": "assistant", "content": reply})
+        message = None
+        if reply.strip():
+            logged = messages.add(agent.name, agent.id, "Jarvis", "jarvis", reply, kind="update")
+            events.emit("message", sender=agent.id, to="jarvis", text=reply.strip()[:3500], kind="update",
+                        msg=logged["id"])  # line breaks kept: this is the agent's answer, read in its topic
+        save()
+    if not _shutting_down.is_set():
+        agent.set_status("stopped")
+
+
+
+def sync_standing() -> str:
+    """Start the standing agents defined in standing_agents.json that aren't running, and keep the running ones'
+    roles up to date. Returns what changed."""
+    started, stopped = [], []
+    for name, spec in standing.definitions().items():
+        mine = [a for a in everyone() if a.kind == "standing" and a.name == name]
+        current = next((a for a in mine if a.status not in FINISHED), None) or (mine[-1] if mine else None)
+        if current:
+            current.role, current.task = spec.get("role", current.role), spec.get("instructions", current.task)
+            if current.status in FINISHED:  # stopped earlier: back with its history and Telegram topic
+                current.cancelled = threading.Event()
+                with current._wake:
+                    current.inbox[:] = [m for m in current.inbox if m != STOP_NOTE]
+                current.set_status("waiting", "back on the team")
+                threading.Thread(target=current.run, args=(True,), daemon=True, name=f"agent-{name}").start()
+                started.append(name)
+            continue
+        result = create_agent(name, spec.get("role", ""), spec.get("instructions", ""), kind="standing")
+        started.append(name if result.startswith("Created") else f"{name} ({result})")
+    for agent in active():  # turned off in standing_agents.json while running
+        if agent.kind == "standing" and agent.name not in standing.definitions():
+            stop_agent(agent.id)
+            stopped.append(agent.name)
+    save()
+    changes = ([f"started {', '.join(started)}"] if started else []) + ([f"turned off {', '.join(stopped)}"] if stopped else [])
+    text = "; ".join(changes)
+    return text[:1].upper() + text[1:] + "." if changes else "All standing agents are running."
 
 
 def _report(agent: Agent) -> None:
@@ -380,7 +500,7 @@ def ensure_reviewer() -> Agent | None:
 def _ensure_reviewer() -> Agent | None:
     reviewer = next((a for a in active() if a.kind == "reviewer"), None)
     if reviewer is None:
-        taken = find(REVIEWER_NAME) and find(REVIEWER_NAME).status not in FINISHED  # e.g. one the user named so
+        taken = any(a.name.lower() == REVIEWER_NAME.lower() for a in active())  # e.g. one the user named so
         result = create_agent(f"{REVIEWER_NAME} (team)" if taken else REVIEWER_NAME, REVIEWER_ROLE, REVIEWER_TASK,
                               kind="reviewer")
         reviewer = next((a for a in active() if a.kind == "reviewer"), None)
@@ -423,8 +543,8 @@ def save() -> None:
     os.makedirs(messages.FOLDER, exist_ok=True)
     with _save_lock:  # snapshot and write together, so an older snapshot never overwrites a newer one
         with _lock:
-            done = [a for a in _agents.values() if a.status in FINISHED]
-            for old in done[:-KEEP_FINISHED]:  # forget long-finished agents
+            done = [a for a in _agents.values() if a.status in FINISHED and a.kind != "standing"]
+            for old in done[:-KEEP_FINISHED]:  # forget long-finished task agents (standing ones keep their place)
                 del _agents[old.id]
             agents = list(_agents.values())
         kept = [a.saved() for a in agents]
@@ -448,6 +568,8 @@ def restore() -> int:
             _agents[agent.id] = agent
             if item.get("ending") and agent.status not in FINISHED:  # stopped or finished just before a restart
                 agent.status = "done" if agent.result else "stopped"
+            if agent.kind == "standing" and agent.name not in standing.definitions() and agent.status not in FINISHED:
+                agent.status = "stopped"  # removed from standing_agents.json, or "enabled": false
             if agent.status not in FINISHED:
                 resumed.append(agent)
     for agent in resumed:
@@ -467,11 +589,11 @@ def shutdown() -> None:
 # ---------- what Jarvis (and the Telegram bot) can do, through the team service ----------
 
 def create_agent(name: str, role: str, task: str, kind: str = "agent", repo: str = "") -> str:
-    """`kind`: "agent", "coder" (works on `repo`, see team/coding.py) or "reviewer" (the team's Reviewer, which
-    doesn't count towards MAX_AGENTS)."""
-    if kind != "reviewer" and len([a for a in active() if a.kind != "reviewer"]) >= MAX_AGENTS:
+    """`kind`: "agent", "coder" (works on `repo`, see team/coding.py), "reviewer" (the team's Reviewer) or
+    "standing" (see team/standing.py); the last two don't count towards MAX_AGENTS."""
+    if kind in KINDS and len([a for a in active() if a.kind in KINDS]) >= MAX_AGENTS:
         return f"There are already {MAX_AGENTS} agents working; stop one first."
-    if find(name) and find(name).status not in FINISHED:
+    if any(a.name.lower() == name.strip().lower() for a in active()):  # exact: "Writer" isn't "Ghostwriter"
         return f"There's already an active agent called {name}; pick another name."
     agent = Agent(name.strip() or "Agent", role.strip(), task.strip(), {"kind": kind})
     if kind == "coder":
@@ -481,7 +603,7 @@ def create_agent(name: str, role: str, task: str, kind: str = "agent", repo: str
         agent.workspace = workspace
     with _lock:
         _agents[agent.id] = agent
-    events.emit("agent", agent=agent.id, name=agent.name, role=agent.role, task=agent.task)
+    events.emit("agent", agent=agent.id, name=agent.name, role=agent.role, task=agent.task, kind=kind)
     save()
     threading.Thread(target=agent.run, daemon=True, name=f"agent-{agent.name}").start()
     where = f" on branch {agent.workspace['branch']} of {agent.workspace['repo']}" if agent.workspace else ""
@@ -494,12 +616,16 @@ def message_agent(agent: str, text: str, via: str = "jarvis") -> str:
 
 
 def stop_agent(agent: str) -> str:
-    targets = active() if agent.lower().strip() in ("all", "everyone", "everybody") else [find(agent)]
+    every = agent.lower().strip() in ("all", "everyone", "everybody")  # all the task agents, not standing ones
+    targets = [a for a in active() if a.kind != "standing"] if every else [find(agent)]
     targets = [a for a in targets if a is not None and a.status not in FINISHED]
     for a in targets:
         a.cancelled.set()  # its own thread reports it stopped, once it is
-        a.put("(stopped)")
-    return f"Stopped {', '.join(a.name for a in targets)}." if targets else f"No active agent like '{agent}'."
+        a.put(STOP_NOTE)
+    if not targets:
+        return ("No task agents are running (standing agents are stopped one at a time, by name)." if every
+                else f"No active agent like '{agent}'.")
+    return f"Stopped {', '.join(a.name for a in targets)}."
 
 
 def team_status() -> str:

@@ -248,6 +248,16 @@ class ClaudeCodeSession:
                 except (OSError, ValueError):
                     pass
 
+    def dispose(self) -> None:
+        """Done with this session for good (an agent's): stop it and release its tool bridge and config file."""
+        self.close()
+        atexit.unregister(self.close)
+        self.bridge.stop()
+        try:
+            os.remove(self._mcp_config_path)
+        except OSError:
+            pass
+
     def ask(self, history: list[dict], confirm, acknowledge=None, on_text=None) -> str:
         self.warm_up()
         self.bridge.confirm = confirm
