@@ -251,7 +251,7 @@ class Agent:
         def logged(name: str, handler):  # so the dashboard shows these steps and the review gate sees changes
             def run(inputs: dict) -> str:
                 result = handler(inputs)
-                self.log.append(f"{name}: {(str(result).splitlines() or [''])[0][:100]}")
+                self.log.append(f"{name}: {_step_summary(result)}")
                 return result
             return run
 
@@ -513,6 +513,15 @@ def sync_standing() -> str:
     changes = ([f"started {', '.join(started)}"] if started else []) + ([f"turned off {', '.join(stopped)}"] if stopped else [])
     text = "; ".join(changes)
     return text[:1].upper() + text[1:] + "." if changes else "All standing agents are running."
+
+
+def _step_summary(result) -> str:
+    """One readable line for the dashboard: the text of a tool's result (images just counted), not its raw form."""
+    if isinstance(result, list):
+        texts = [b.get("text", "") for b in result if isinstance(b, dict) and b.get("type") == "text"]
+        images = sum(1 for b in result if isinstance(b, dict) and b.get("type") == "image")
+        result = " ".join(texts) + (f" ({images} image{'s' if images != 1 else ''})" if images else "")
+    return (str(result).strip().splitlines() or [""])[0][:100]
 
 
 def _report(agent: Agent) -> None:

@@ -1177,6 +1177,21 @@ document.getElementById("tabs").addEventListener("click", ev => {
   feedFilter = b.dataset.tab; renderTabs(); refilter();
   const box = document.getElementById("feed"); box.scrollTop = box.scrollHeight;
 });
+// One line per working agent that updates in place ("Video Editor · working · looking at the video (4 steps)"),
+// instead of a new item for every step. A new line starts once other news has pushed the old one up the feed.
+const workLines = {};
+function workLine(id, t, verb) {
+  const box = document.getElementById("feed"), line = workLines[id];
+  const recent = line && line.isConnected && [...box.children].slice(-6).includes(line);
+  if (recent) {
+    line.dataset.n = +line.dataset.n + 1;
+    line.querySelector(".meta").lastChild.textContent = `${t} · ${agents[id].info.name} · working`;
+    line.querySelector(".txt").textContent = `${verb} (${line.dataset.n} steps)`;
+    return;
+  }
+  const d = feed("act", `${t} · ${agents[id].info.name} · working`, verb, id);
+  if (d) { d.dataset.n = 1; d.dataset.key = ""; workLines[id] = d; }
+}
 function feed(cls, meta, text, agentId) {
   const box = document.getElementById("feed");
   const full = String(text ?? ""), [time, ...rest] = meta.split(" · "), key = `${cls}|${rest.join(" · ")}|${full}`;
@@ -1205,6 +1220,7 @@ function feed(cls, meta, text, agentId) {
   if (!shown(d)) d.style.display = "none";
   box.scrollTop = box.scrollHeight;
   renderTabs();
+  return d;
 }
 function openDrawer(id) {
   // Built once per agent; refreshDrawer() updates only what changes, so a half-typed message and the buttons stay put.
@@ -1285,7 +1301,7 @@ function handle(e) {
       const a = agents[e.agent]; if (!a) break;
       const verb = VERBS[e.tool] || e.tool.replace(/_/g, " ");
       a.activity = verb; a.steps.push(`${verb}: ${e.result}`); a.info.steps = a.steps.length;
-      feed("act", `${t} · ${a.info.name} · ${verb}`, e.result, e.agent);
+      workLine(e.agent, t, verb);   // every step is in the agent's panel; the feed keeps one live line per agent
       render(); if (selected === e.agent) refreshDrawer(); break;
     }
     case "message": {
