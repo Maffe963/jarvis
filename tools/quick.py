@@ -24,6 +24,20 @@ def _media(action: str):
     return "media_control", {"action": action}
 
 
+def _move(m):
+    """move_window_to_monitor for "move X to the left screen", or None (Claude decides) for things like "move on"."""
+    if m.group("w") in ("on", "over", "up", "back", "along", "forward"):
+        return None
+    return "move_window_to_monitor", {"monitor": m.group("m"), "window": _window_name(m.group("w"))}
+
+
+def _window_name(said: str) -> str:
+    """"the spotify window" -> "spotify"; "this" / "it" -> "" (the window in front)."""
+    words = [w for w in said.split() if w not in ("the", "my", "window", "app", "application")]
+    name = " ".join(words)
+    return "" if name in ("this", "it", "that", "this one", "that one", "") else name
+
+
 def _now(fmt: str):
     return None, datetime.now().strftime(fmt).replace(" 0", " ").lstrip("0")
 
@@ -44,6 +58,13 @@ COMMANDS = [
     (r"(set )?(the )?volume( to)? (\d{1,3})( ?percent| ?%)?", lambda m: ("volume", {"action": "set", "level": int(m.group(4))})),
     (r"mute( the volume| the sound| it)?", lambda m: ("volume", {"action": "mute"})),
     (r"unmute( the volume| the sound| it)?", lambda m: ("volume", {"action": "unmute"})),
+    # "move Spotify to the left screen", "put this on my main monitor": no Claude, nothing to confirm.
+    (r"(?:move|put|send|throw|drag|switch) (?P<w>.+?) (?:over )?(?:to|on|onto) (?:the |my )?"
+     r"(?P<m>left|right|main|middle|center|centre|primary|other|second|first|third|top|bottom|\d)"
+     r"(?: one)?(?: screen| monitor| display)",
+     lambda m: _move(m)),
+    (r"(?:move|put|throw|drag) (?P<w>.+?) (?:over )?(?:to|on|onto) the (?P<m>left|right)(?: side)?",  # "...to the left"
+     lambda m: _move(m)),
     # "send me a screenshot (of my left screen) (to my phone)": straight to the phone, no questions.
     (r"(send|text)( me)?( a)? (screenshot|screen shot|picture of my screens?)( of( my| the)? (?P<m>[a-z]+)"
      r"( screens?| monitors?)?)?( to( my)? phone)?",
