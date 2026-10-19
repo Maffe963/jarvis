@@ -3,6 +3,11 @@
   "done": [
     {
       "date": "2026-10-19",
+      "title": "Agents keep going on long jobs",
+      "detail": "Agents no longer fail after 5 minutes of work. A step is only treated as stuck when Claude goes quiet for 5 minutes, and time spent running tests, rendering, transcribing or waiting on your approval doesn't count. If an agent does get stuck or Claude Code crashes, it starts afresh and carries on from where it left off (up to twice) instead of failing."
+    },
+    {
+      "date": "2026-10-19",
       "title": "Jarvis can watch videos",
       "detail": "Send Jarvis or any agent a YouTube/TikTok/Instagram link or a video file and ask what happens in it. He looks at frames from across it (more where the shot changes) and reads what's said (the video's captions, or a transcript made on the PC), then can zoom into any part. Built like the popular claude-video and claude-real-video projects, with no extra keys."
     },

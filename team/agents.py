@@ -52,6 +52,9 @@ their message will come to you. If your part was to hand something to a teammate
 nobody needs more from you), call finish with a short note of what you handed over."""
 RESUMED = ("(The team service restarted while you were working, so your last step may not have finished. "
            "Carry on from where you left off.)")
+CUT_OFF = ("\n\n(Your last attempt at this was cut off part-way, so some steps may already be done. Check before "
+           "redoing anything, then carry on from where you left off.)")
+RETRIES = 2  # a stalled or crashed turn is picked up again this many times before the agent gives up
 ALONE_GRACE_S = 60  # a waiting agent whose teammates have all finished wraps up after this long
 USER_IDS = ("user", "jarvis", "the user")
 STOP_NOTE = "(stopped)"  # wakes a waiting agent when it's stopped; never a job
@@ -365,7 +368,7 @@ class Agent:
             prompt += CODER_GUIDE.format(**self.workspace)
             allowed = {"web_search"}  # everything else it does goes through its workspace's tools
         self.session = brain.ClaudeCodeSession(prompt, allowed, self.cancelled, self.log, self._tools(),
-                                               label=self.name)
+                                               label=self.name, turn_limit=brain.WORK_TURN_LIMIT_S)
         if not resumed or not self.history:
             message = f"Your task from the user (via Jarvis):\n{self.task}"
         elif self.status in ("starting", "working"):
@@ -382,7 +385,8 @@ class Agent:
                 self.history.append({"role": "user", "content": message})
                 self.set_status("working", _short(message, 120))
                 try:
-                    reply = self.session.ask(self.history, lambda q: approvals.ask(q, self.name, self.id))
+                    reply = _ask(self, lambda: self.session.ask(
+                        self.history, lambda q: approvals.ask(q, self.name, self.id)), self.history)
                 except brain.TaskInterrupted:
                     break
                 self.history.append({"role": "assistant", "content": reply})
@@ -441,17 +445,36 @@ def _standing_turn(agent: "Agent", message: str) -> str:
     del agent.history[:-STANDING_HISTORY]
     agent.set_status("working", _short(message, 120))
     session = agent.session = brain.ClaudeCodeSession(prompt, allowed, agent.cancelled, agent.log, agent._tools(),
-                                                     label=agent.name, model=spec.get("model"))
+                                                     label=agent.name, model=spec.get("model"),
+                                                     turn_limit=brain.WORK_TURN_LIMIT_S)
     scheduled = message.startswith("(Scheduled job")
     try:
-        reply = session.ask(agent.history[-SCHEDULED_REPLAY:] if scheduled else agent.history,
-                            lambda q: approvals.ask(q, agent.name, agent.id))
+        reply = _ask(agent, lambda: session.ask(agent.history[-SCHEDULED_REPLAY:] if scheduled else agent.history,
+                                                lambda q: approvals.ask(q, agent.name, agent.id)), agent.history)
     finally:
         session.dispose()
         agent.session = None
     agent.history.append({"role": "assistant", "content": reply})
     standing.job_done(agent)  # e.g. the emails it was shown now count as handled
     return reply
+
+
+def _ask(agent: "Agent", ask, history: list[dict]) -> str:
+    """One turn. After a stall or a crash, Claude Code starts afresh with the conversation replayed and a note to
+    carry on, rather than the agent failing."""
+    import brain
+
+    for attempt in range(RETRIES + 1):
+        try:
+            return ask()
+        except brain.BackendError as e:
+            if not e.retry or attempt == RETRIES or agent.cancelled.is_set() or _shutting_down.is_set():
+                raise
+            print(f"[team] {agent.name}: {e} Trying again ({attempt + 1} of {RETRIES}).")
+            if history and history[-1]["role"] == "user" and CUT_OFF not in history[-1]["content"]:
+                history[-1]["content"] += CUT_OFF
+            agent.set_status("working", "picking up where it left off")
+    raise AssertionError("unreachable")
 
 
 def _run_standing(agent: "Agent", resumed: bool) -> None:

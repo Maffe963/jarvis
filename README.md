@@ -220,6 +220,10 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
 - `JARVIS_EFFORT`: subscription mode only, `low` (default, fastest) up to `max`.
 - `JARVIS_REFRESH_AT_TOKENS` (default 60000): once a conversation is this big, Jarvis starts a fresh one in a
   quiet moment (with the recent turns replayed), because every step re-reads the whole thing.
+- `JARVIS_STALL_S` (default 300): how long Claude Code may go silent before a step counts as stuck. Time spent in
+  Jarvis's own tools (tests, renders, transcribing, waiting on your approval) doesn't count. A stuck agent starts
+  afresh and carries on, up to twice, before it gives up; agents get up to 2 hours per step, your conversation 15
+  minutes.
 - `JARVIS_CAVEMAN`: a test of [Caveman](https://github.com/JuliusBrussee/caveman) (terse replies to save tokens). `test` (default): for `JARVIS_CAVEMAN_DAYS` days (default 3) each Claude session randomly has it on or off, the dashboard's Usage tab compares them, and the results go to your phone when it ends. `on` keeps it on; `off` skips it.
 - `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`: a more natural voice.
 

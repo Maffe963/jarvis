@@ -79,7 +79,12 @@ SUBSCRIPTION_HISTORY_TURNS = 12
 
 
 class BackendError(Exception):
-    """A failure with a message fit to say to the user."""
+    """A failure with a message fit to say to the user. `retry`: a hiccup (a stall, Claude Code exiting) that's
+    worth another go, unlike signing in or the usage limit."""
+
+    def __init__(self, message: str, retry: bool = False) -> None:
+        super().__init__(message)
+        self.retry = retry
 
 
 class TaskInterrupted(Exception):
@@ -170,6 +175,12 @@ REFRESH_AFTER_TURNS = 40  # then a fresh Claude Code is started in a quiet momen
 # step costs all of it again, so a fresh start with a short replay is much cheaper than carrying it on.
 REFRESH_AT_TOKENS = int(os.environ.get("JARVIS_REFRESH_AT_TOKENS", "60000"))
 REFRESH_IDLE_S = 90
+# A turn is only given up on when Claude Code shows no sign of life for STALL_S (no output, and none of Jarvis's tools
+# running: a test run, a render or an approval can take a while), or it passes its session's overall limit.
+STALL_S = int(os.environ.get("JARVIS_STALL_S", "300"))
+TURN_LIMIT_S = 15 * 60           # the main conversation (longer work goes to background tasks and agents)
+WORK_TURN_LIMIT_S = 2 * 3600     # background tasks and agents
+TOOL_TIMEOUT_S = 3 * 3600        # one tool call (mcp_server.py and Claude Code's own limit)
 
 
 class ClaudeCodeSession:
@@ -182,13 +193,15 @@ class ClaudeCodeSession:
 
     def __init__(self, system_prompt: str | None = None, allowed_tools: set[str] | None = None,
                  cancelled: threading.Event | None = None, log: list[str] | None = None,
-                 extra_tools: dict | None = None, label: str = "Jarvis", model: str | None = None) -> None:
+                 extra_tools: dict | None = None, label: str = "Jarvis", model: str | None = None,
+                 turn_limit: float = TURN_LIMIT_S) -> None:
         """Defaults: the main conversation. Background tasks pass their own prompt, tools and stop switch, and a
         label saying whose session it is (for the dashboard's usage and session lists)."""
         from tools.bridge import ToolBridge
 
         self.system_prompt = system_prompt or SYSTEM_PROMPT
         self.label = label
+        self.turn_limit = turn_limit
         self.cancelled = task_cancelled if cancelled is None else cancelled
 
         claude = shutil.which("claude")
@@ -198,7 +211,8 @@ class ClaudeCodeSession:
         config = {"mcpServers": {"jarvis": {
             "command": sys.executable,
             "args": [os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_server.py")],
-            "env": {"JARVIS_BRIDGE_URL": self.bridge.url, "JARVIS_BRIDGE_TOKEN": self.bridge.token},
+            "env": {"JARVIS_BRIDGE_URL": self.bridge.url, "JARVIS_BRIDGE_TOKEN": self.bridge.token,
+                    "JARVIS_TOOL_TIMEOUT": str(TOOL_TIMEOUT_S)},
         }}}
         fd, self._mcp_config_path = tempfile.mkstemp(prefix="jarvis-mcp-", suffix=".json")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -237,6 +251,7 @@ class ClaudeCodeSession:
         for var in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE"):
             env.pop(var, None)
         env["JARVIS_SESSION"] = self.label  # so the dashboard can tell whose Claude Code process this is
+        env.setdefault("MCP_TOOL_TIMEOUT", str(TOOL_TIMEOUT_S * 1000))  # ms; a long tool call isn't cut off
         workdir = os.path.join(tempfile.gettempdir(), "jarvis-claude-code")
         os.makedirs(workdir, exist_ok=True)
         cmd = list(self._cmd)
@@ -364,7 +379,7 @@ class ClaudeCodeSession:
             return self._ask(history, confirm, acknowledge, on_text)
         self._fresh = False
 
-        deadline = time.monotonic() + 300
+        started = alive = time.monotonic()
         used, model = {}, ""  # this turn's usage, by API message
         while True:
             if self.cancelled.is_set():
@@ -379,10 +394,14 @@ class ClaudeCodeSession:
             try:
                 event = self._events.get(timeout=0.2)
             except queue.Empty:
-                if time.monotonic() > deadline:
+                now = time.monotonic()
+                if self.bridge.running:
+                    alive = now  # one of Jarvis's tools is still working on it
+                if now - alive > STALL_S or now - started > self.turn_limit:
                     self.close()
-                    raise BackendError("That took too long, sir. Please try again.")
+                    raise BackendError("That took too long, sir. Please try again.", retry=True)
                 continue
+            alive = time.monotonic()
             if event is None:
                 detail = "".join(self._stderr).strip() or "Claude Code exited."
                 self._proc = None
@@ -416,7 +435,7 @@ def _error_for(detail: str) -> BackendError:
         return BackendError("Claude Code isn't signed in, sir. Run claude in a terminal and use slash login.")
     if "limit" in lowered:
         return BackendError("I've hit the subscription's usage limit, sir. It should reset soon.")
-    return BackendError("Claude Code returned an error, sir. The details are on screen.")
+    return BackendError("Claude Code returned an error, sir. The details are on screen.", retry=True)
 
 
 def _build_prompt(history: list[dict]) -> str:
@@ -447,7 +466,7 @@ def run_background(task: str, system_prompt: str, allowed: set[str], cancelled: 
     so it doesn't hold up the main one. Returns Claude's final report."""
     request = [{"role": "user", "content": task}]
     if BACKEND == "subscription":
-        session = ClaudeCodeSession(system_prompt, allowed, cancelled, log, label=label)
+        session = ClaudeCodeSession(system_prompt, allowed, cancelled, log, label=label, turn_limit=WORK_TURN_LIMIT_S)
         try:
             return session.ask(request, confirm)
         finally:

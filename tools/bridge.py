@@ -24,6 +24,8 @@ class ToolBridge:
         self.confirm = None      # set by brain.py before each turn
         self.acknowledge = None  # likewise
         self._lock = threading.Lock()  # one tool (and one confirmation prompt) at a time
+        self.running = 0  # tool calls in progress (so a long one isn't mistaken for Claude Code stalling)
+        self._count = threading.Lock()
         bridge = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -38,6 +40,15 @@ class ToolBridge:
                     self.send_error(404)
                     return
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+                with bridge._count:
+                    bridge.running += 1
+                try:
+                    self._call(body)
+                finally:
+                    with bridge._count:
+                        bridge.running -= 1
+
+            def _call(self, body: dict) -> None:
                 if body["name"] in extra:
                     try:
                         result = extra[body["name"]][1](body.get("input") or {})
