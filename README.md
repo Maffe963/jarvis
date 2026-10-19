@@ -223,6 +223,18 @@ After each recording Jarvis prints a line like `[mic] recorded 2.3s, loudest 0.0
 - `JARVIS_CAVEMAN`: a test of [Caveman](https://github.com/JuliusBrussee/caveman) (terse replies to save tokens). `test` (default): for `JARVIS_CAVEMAN_DAYS` days (default 3) each Claude session randomly has it on or off, the dashboard's Usage tab compares them, and the results go to your phone when it ends. `on` keeps it on; `off` skips it.
 - `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID`: a more natural voice.
 
+## Watching videos
+
+Jarvis and every agent can watch a video: a YouTube, TikTok, Instagram, X or other link, or a file on the PC
+("what happens in this video?", "summarize this lecture from 20:00"). `watch_video` (`tools/watch.py`) works like
+the popular claude-video and claude-real-video projects:
+- **Frames:** taken from across the video, more where the shot changes, labelled with timestamps.
+- **Speech:** the video's own captions when it has them, otherwise a transcript made on the PC with faster-whisper.
+- **Long videos:** the first look is an overview; ask again with a start and end time to zoom into a part.
+
+Links are downloaded with yt-dlp at up to 720p and kept for a week. YouTube also needs Node.js or Deno on the PC
+(`winget install OpenJS.NodeJS.LTS`).
+
 ## What's changed and what's planned
 
 The dashboard's Changes tab lists what's changed in Jarvis and what's planned (`changes.json`). At 9am Jarvis

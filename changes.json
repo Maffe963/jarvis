@@ -3,6 +3,11 @@
   "done": [
     {
       "date": "2026-10-19",
+      "title": "Jarvis can watch videos",
+      "detail": "Send Jarvis or any agent a YouTube/TikTok/Instagram link or a video file and ask what happens in it. He looks at frames from across it (more where the shot changes) and reads what's said (the video's captions, or a transcript made on the PC), then can zoom into any part. Built like the popular claude-video and claude-real-video projects, with no extra keys."
+    },
+    {
+      "date": "2026-10-19",
       "title": "Less Claude usage",
       "detail": "Ghostwriter now checks your inbox for free before waking Claude, and Trade Analyst skips days with no trades, so empty checks cost nothing. Scheduled jobs replay less history, email checks carry fewer and shorter emails, and Jarvis starts a fresh conversation once it gets large instead of re-reading it all on every step. The Usage tab shows how many jobs were skipped."
     },

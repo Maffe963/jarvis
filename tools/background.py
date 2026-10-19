@@ -23,7 +23,7 @@ ALLOWED = {
     "web_search", "read_file", "list_files", "find_files", "write_file", "get_weather", "calendar_events",
     "check_email", "read_discord", "list_reminders", "set_reminder", "get_list", "add_to_list", "list_contacts",
     "list_facts", "remember", "run_project_command", "get_project_output", "send_to_phone", "system_info",
-    "spotify_playlists", "list_folder_access",
+    "spotify_playlists", "list_folder_access", "watch_video",
 }
 
 PROMPT = """You are Jarvis, working on a background task the user handed off to you. They are NOT waiting for
