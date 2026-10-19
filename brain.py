@@ -52,7 +52,9 @@ def screen_context() -> str:
         from tools import system
 
         hwnd = win32gui.GetForegroundWindow()
-        window = next((w for w in system._app_windows() if w["hwnd"] == hwnd), None)
+        title = win32gui.GetWindowText(hwnd)
+        shown = hwnd and title and title not in ("Program Manager", "Settings") and win32gui.IsWindowVisible(hwnd)
+        window = system._window_info(hwnd, title) if shown else None  # just this window, not every one
         if window:
             parts.append(f'Front window: "{window["title"][:80]}" ({system._app_label(window)})')
     except Exception:

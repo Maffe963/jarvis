@@ -250,6 +250,7 @@ def start_team(say) -> None:
 def run_remote() -> None:
     """Phone control only: no microphone or speech, just the Telegram bot (and timers/reminders to the phone)."""
     warm_up()
+    threading.Thread(target=quick.load_apps, daemon=True).start()  # so "open Spotify" is instant
     phone = start_phone()
     if phone is None:
         print("Phone control isn't set up: add TELEGRAM_BOT_TOKEN to .env (see telegram_bot.py).")
@@ -269,6 +270,7 @@ def run_remote() -> None:
 
 def run_text() -> None:
     warm_up()
+    threading.Thread(target=quick.load_apps, daemon=True).start()  # so "open Spotify" is instant
     reminders.start()
     start_team(lambda msg: print(f"\nJarvis: {msg}"))
     print("Jarvis online (text mode). Type 'quit' to exit.\n")
@@ -403,6 +405,7 @@ def run_voice() -> None:
     microphone = select_microphone()
     print("Starting up...")
     warm_up()
+    threading.Thread(target=quick.load_apps, daemon=True).start()  # so "open Spotify" is instant
     wake_word._get_model()
     stt._get_model()
     stt.warm_up()

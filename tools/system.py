@@ -117,6 +117,19 @@ def _jarvis_pids() -> set[int]:
 
 def _app_windows() -> list[dict]:
     """Open app windows with their program names (Store apps resolved to the real app, not their frame host)."""
+    protected = _jarvis_pids()
+    console = ctypes.windll.kernel32.GetConsoleWindow()
+    found = []
+    for hwnd, title in _visible_windows().items():
+        window = _window_info(hwnd, title, protected, console)
+        if window:
+            found.append(window)
+    return found
+
+
+def _window_info(hwnd: int, title: str, protected: set[int] | None = None, console: int | None = None) -> dict | None:
+    """{"hwnd", "title", "exe", "pid"} for an app window the user sees, or None for anything else."""
+    import win32con
     import win32gui
     import win32process
 
@@ -126,29 +139,26 @@ def _app_windows() -> list[dict]:
         except psutil.Error:
             return ""
 
-    import win32con
-
-    protected = _jarvis_pids()
-    console = ctypes.windll.kernel32.GetConsoleWindow()
-    found = []
-    for hwnd, title in _visible_windows().items():
-        if _is_background_window(hwnd, win32con, win32gui):
-            continue
-        pid = win32process.GetWindowThreadProcessId(hwnd)[1]
-        exe = exe_of(pid)
-        if exe == "applicationframehost":  # Store apps (Calculator, Settings...) live in a child window
-            children = []
-            win32gui.EnumChildWindows(hwnd, lambda child, _: children.append(child), None)
-            for child in children:
-                child_pid = win32process.GetWindowThreadProcessId(child)[1]
-                if child_pid != pid:
-                    pid, exe = child_pid, exe_of(child_pid)
-                    break
-        if (not exe or exe in NEVER_CLOSE or pid in protected or hwnd == console
-                or (exe == "explorer" and win32gui.GetClassName(hwnd) != "CabinetWClass")):
-            continue  # explorer.exe is also the taskbar and desktop; only its folder windows are "File Explorer"
-        found.append({"hwnd": hwnd, "title": title, "exe": exe, "pid": pid})
-    return found
+    if protected is None:
+        protected = _jarvis_pids()
+    if console is None:
+        console = ctypes.windll.kernel32.GetConsoleWindow()
+    if _is_background_window(hwnd, win32con, win32gui):
+        return None
+    pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+    exe = exe_of(pid)
+    if exe == "applicationframehost":  # Store apps (Calculator, Settings...) live in a child window
+        children = []
+        win32gui.EnumChildWindows(hwnd, lambda child, _: children.append(child), None)
+        for child in children:
+            child_pid = win32process.GetWindowThreadProcessId(child)[1]
+            if child_pid != pid:
+                pid, exe = child_pid, exe_of(child_pid)
+                break
+    if (not exe or exe in NEVER_CLOSE or pid in protected or hwnd == console
+            or (exe == "explorer" and win32gui.GetClassName(hwnd) != "CabinetWClass")):
+        return None  # explorer.exe is also the taskbar and desktop; only its folder windows are "File Explorer"
+    return {"hwnd": hwnd, "title": title, "exe": exe, "pid": pid}
 
 
 def _is_background_window(hwnd: int, win32con, win32gui) -> bool:
