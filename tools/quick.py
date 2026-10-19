@@ -4,6 +4,7 @@ Only short, exact phrasings match ("pause", "next song", "volume up", "what time
 including anything with more to it ("pause and open Notion"), still goes to Claude.
 """
 import re
+import threading
 from datetime import datetime
 
 FILLER = re.compile(r"^(hey |ok |okay )?(jarvis[, ]+)?(please |can you |could you |would you )*|( please| now| jarvis)+$")
@@ -38,6 +39,47 @@ def _window_name(said: str) -> str:
     return "" if name in ("this", "it", "that", "this one", "that one", "") else name
 
 
+def _open(m):
+    """open_app for "open Spotify (on my left screen)", only when it's clearly an installed app; anything else
+    ("open my downloads", "open youtube.com") goes to Claude."""
+    from tools import system
+
+    said = m.group("app").split()
+    if not said or said[0] in ("my", "the", "a", "this", "that", "it") or len(said) > 3 \
+            or any(w in said for w in ("and", "then", "folder", "file", "website")):
+        return None  # "open my photos" may mean the Pictures folder: Claude decides
+    name = " ".join(said)
+    lowered = name.lower()
+    if system._start_apps is None:  # reading the app list takes a few seconds: not now, but ready for next time
+        threading.Thread(target=system._get_start_apps, daemon=True).start()
+        return None
+    apps = system._start_apps
+    if not any(a["Name"].lower() == lowered for a in apps):  # "youtube" isn't "YouTube Music": Claude decides
+        return None
+    if m.group("m"):
+        if system._matching_windows(name):  # already open: move it there rather than start another copy
+            return "move_window_to_monitor", {"monitor": m.group("m"), "window": name}
+        return "open_app", {"name": name, "monitor": m.group("m")}
+    return "open_app", {"name": name, "monitor": ""}
+
+
+def load_apps() -> None:
+    from tools import system
+
+    try:
+        system._get_start_apps()
+    except Exception as e:
+        print(f"[quick] couldn't read the app list: {e}")
+
+
+UNITS = {"second": 1, "sec": 1, "minute": 60, "min": 60, "hour": 3600}
+
+
+def _timer(m):
+    seconds = int(m.group("n") or m.group("n2")) * UNITS[m.group("u") or m.group("u2")]
+    return ("set_timer", {"seconds": seconds}) if 0 < seconds <= 24 * 3600 else None
+
+
 def _now(fmt: str):
     return None, datetime.now().strftime(fmt).replace(" 0", " ").lstrip("0")
 
@@ -69,6 +111,13 @@ COMMANDS = [
     (r"(send|text)( me)?( a)? (screenshot|screen shot|picture of my screens?)( of( my| the)? (?P<m>[a-z]+)"
      r"( screens?| monitors?)?)?( to( my)? phone)?",
      lambda m: ("send_screenshot", {"monitor": m.group("m") or ""})),
+    (r"(?:open|launch|start) (?P<app>[a-z0-9 .+'-]+?)(?: (?:on|to) (?:the |my )?(?P<m>left|right|main|"
+     r"middle|center|centre|primary|other|second|first|third|top|bottom|\d)(?: one)?(?: screen| monitor| display))?",
+     lambda m: _open(m)),
+    (r"(?:set |start )?(?:a |an )?(?:timer for (?P<n>\d{1,3}) (?P<u>second|sec|minute|min|hour)s?"
+     r"|(?P<n2>\d{1,3}) (?P<u2>second|sec|minute|min|hour)s? timer)",
+     lambda m: _timer(m)),
+    (r"lock (?:the |my )?(?:computer|pc|screen|laptop)", lambda m: ("power", {"action": "lock"})),
     (r"what time is it|what's the time|whats the time|what is the time", lambda m: _now("It's %I:%M %p, sir.")),
     (r"what('s| is) (the date|today's date)|what day is it( today)?|whats the date",
      lambda m: _now("It's %A, %B %d, sir.")),
@@ -83,5 +132,7 @@ def match(text: str):
     for pattern, action in COMMANDS:
         found = re.fullmatch(pattern, said)
         if found:
-            return action(found)
+            result = action(found)
+            if result is not None:  # None: not this one after all ("start a timer" isn't an app)
+                return result
     return None

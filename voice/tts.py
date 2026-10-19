@@ -1,9 +1,11 @@
 import json
 import os
+import re
 import tempfile
 import threading
 import time
 import wave
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import sounddevice as sd
@@ -50,33 +52,91 @@ def windows_voices() -> list[tuple[str, str]]:
 def speak(text: str) -> bool:
     """Speak text aloud; returns False if stop() cut it off.
 
-    Uses ElevenLabs if a key is configured, otherwise Windows' built-in voice. Either way the speech is
-    rendered to audio first and then played, so playback can be stopped part-way.
+    Uses ElevenLabs if a key is configured, otherwise Windows' built-in voice. The text is said a sentence or
+    so at a time: the next part is turned into audio while the current one plays, so the first words come
+    quickly and there are no gaps. Calls play in the order they were made (each one is prepared while the
+    one before it is still playing), and playback can be stopped part-way.
     """
+    global _serving, _issued, _playback
     if not text:
         return True
-    with _lock:
-        _interrupted.clear()
-        audio, rate = None, 0
-        if _elevenlabs_enabled():
+    parts = _parts(text)
+    upcoming = _renderer.submit(_render, parts[0])
+    with _turn:  # from here on nothing can fail before this call's turn ends (see the finally)
+        ticket, _issued = _issued, _issued + 1
+    try:
+        with _turn:
+            _turn.wait_for(lambda: _serving == ticket)
+        with _lock:
+            _interrupted.clear()
+            # One timeline for the whole reply, so barge-in compares the mic with what was really playing,
+            # including the echo of the previous sentence's last word.
+            start, env = None, np.zeros(0, dtype=np.float32)
+            speaking.set()
             try:
-                audio, rate = _render_elevenlabs(text)
-            except Exception as e:
-                print(f"[tts] ElevenLabs failed ({e}); falling back to local voice")
-        if audio is None:
-            audio, rate = _render_local(text)
-        if _interrupted.is_set():
-            return False
-        global _playback
-        _playback = (time.monotonic(), _envelope(audio, rate))
-        speaking.set()
+                for n in range(len(parts)):
+                    audio, rate = upcoming.result()
+                    if n + 1 < len(parts):
+                        upcoming = _renderer.submit(_render, parts[n + 1])
+                    if _interrupted.is_set():
+                        return False
+                    now = time.monotonic()
+                    start = now if start is None else start
+                    gap = max(0, int((now - start) / ENVELOPE_STEP_S) - len(env))
+                    env = np.concatenate([env, np.zeros(gap, dtype=np.float32), _envelope(audio, rate)])
+                    _playback = (start, env)
+                    sd.play(audio, samplerate=rate)
+                    sd.wait()  # returns early if stop() is called
+                    if _interrupted.is_set():
+                        return False
+                return True
+            finally:
+                speaking.clear()
+                _playback = None
+    finally:
+        with _turn:
+            _serving = max(_serving, ticket + 1)
+            _turn.notify_all()
+
+
+_turn = threading.Condition()     # whose turn it is to play
+_issued = 0                       # tickets handed out, in call order
+_serving = 0                      # the ticket whose turn it is
+_renderer = ThreadPoolExecutor(max_workers=3, thread_name_prefix="tts")
+_local_lock = threading.Lock()    # one Windows voice engine at a time
+FIRST_PART_MIN = 20               # characters: the first part is one sentence, said as soon as it's ready
+PART_MAX = 260                    # later parts group sentences up to this length
+
+
+def _parts(text: str) -> list[str]:
+    """The text in speakable pieces: the first sentence on its own, then a few sentences at a time."""
+    parts: list[str] = []
+    for sentence in (s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s):
+        if not parts:
+            parts.append(sentence)
+        elif len(parts) == 1 and len(parts[0]) < FIRST_PART_MIN:  # "Yes sir." alone would sound clipped
+            parts[0] += " " + sentence
+        elif len(parts) > 1 and len(parts[-1]) + len(sentence) < PART_MAX:
+            parts[-1] += " " + sentence
+        else:
+            parts.append(sentence)
+    return parts or [text]
+
+
+def wait_until_quiet() -> None:
+    """Wait until everything asked to be said so far has been said (or stopped)."""
+    with _turn:
+        _turn.wait_for(lambda: _serving >= _issued)
+
+
+def _render(text: str) -> tuple[np.ndarray, int]:
+    if _elevenlabs_enabled():
         try:
-            sd.play(audio, samplerate=rate)
-            sd.wait()  # returns early if stop() is called
-        finally:
-            speaking.clear()
-            _playback = None
-        return not _interrupted.is_set()
+            return _render_elevenlabs(text)
+        except Exception as e:
+            print(f"[tts] ElevenLabs failed ({e}); falling back to local voice")
+    with _local_lock:
+        return _render_local(text)
 
 
 ENVELOPE_STEP_S = 0.02

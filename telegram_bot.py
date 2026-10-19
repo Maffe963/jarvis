@@ -24,6 +24,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 HISTORY_FILE = os.path.join(ROOT, "memory", "telegram_history.json")
 MAX_MESSAGE = 4000
 CONFIRM_TIMEOUT_S = 180
+LIVE_EDIT_EVERY_S = 1.0  # while a reply is being written, the message on the phone is updated this often
+TYPING_EVERY_S = 4.5     # Telegram drops "typing..." after about 5 seconds, so it's sent again
 # Tools whose effects you can see on screen: after these, a screenshot is sent as proof.
 VISIBLE_TOOLS = {"open_app", "close_app", "open_url", "focus_window", "show_desktop", "ui_action",
                  "move_window_to_monitor", "open_path", "set_clipboard"}
@@ -108,6 +110,92 @@ class TelegramAPI:
             return resp.read()
 
 
+def _plain(text: str) -> str:
+    return re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), text)  # Telegram shows ** literally
+
+
+class LiveReply:
+    """Shows Jarvis's reply on the phone while Claude is still writing it: one message, edited as more arrives
+    (at most once a LIVE_EDIT_EVERY_S), then replaced by the finished reply. Text Claude writes before using a
+    tool ("Let me check your calendar.") stays as its own message, and the answer starts a new one."""
+
+    def __init__(self, bot: "PhoneJarvis") -> None:
+        self.bot, self.text, self.shown, self.message_id = bot, "", "", None
+        self.last, self.queued, self.done = 0.0, False, False
+        self.lock = threading.Lock()
+
+    def __call__(self, piece) -> None:
+        from brain import NEW_MESSAGE
+
+        with self.lock:
+            if self.done:
+                return
+            if piece is NEW_MESSAGE:
+                part, self.text = self.text.strip(), ""
+                if self.message_id is not None or self.queued:  # keep what's shown; the next part gets its own message
+                    self.bot.later(lambda: self._next_message(part))
+                return
+            self.text += piece
+            draft = self.text.strip()
+            if self.queued or len(draft) < 15 or draft.startswith("[") or time.monotonic() - self.last < LIVE_EDIT_EVERY_S:
+                return
+            self.queued = True
+        self.bot.later(self._show)
+
+    # _next_message, _show and _put only run on the bot's send thread (or after finish), one at a time.
+    def _next_message(self, part: str) -> None:
+        if part and not part.startswith("["):
+            self._put(part)  # the whole of it, without the cursor
+        self.message_id, self.shown = None, ""
+
+    def _show(self) -> None:
+        with self.lock:
+            self.queued = False
+            draft = self.text.strip()
+            if self.done or not draft or draft.startswith("["):
+                return
+        self._put(draft[:MAX_MESSAGE - 2] + " ▍")
+        self.last = time.monotonic()
+
+    def _put(self, text: str) -> None:
+        """Send the message, or edit the one already sent."""
+        text = _plain(text)[:MAX_MESSAGE] or "(empty)"
+        if text == self.shown:
+            return
+        if self.message_id is None:
+            sent = self.bot.send(text)
+            self.message_id = sent.get("message_id") if sent else None
+        else:
+            try:
+                self.bot.api.call("editMessageText", chat_id=self.bot.chat_id, message_id=self.message_id, text=text)
+            except Exception as e:
+                if "not modified" not in str(e):
+                    print(f"[telegram] couldn't update the reply: {e}")
+        self.shown = text
+
+    def finish(self, _=None) -> bool:
+        """Stop updating. True if part of the answer is already on the phone (then use replace)."""
+        with self.lock:
+            self.done = True
+        self.bot._flush()
+        return self.message_id is not None
+
+    def settle(self) -> None:
+        """Leave what was written so far as it is, without the cursor (the task was stopped or failed)."""
+        if self.shown.endswith(" ▍"):
+            self._put(self.shown[:-2])
+
+    def replace(self, reply: str) -> None:
+        """Put the finished reply in place of the one being written (or remove it if there's nothing to say)."""
+        if reply:
+            self._put(reply)
+            return
+        try:
+            self.bot.api.call("deleteMessage", chat_id=self.bot.chat_id, message_id=self.message_id)
+        except Exception:
+            self._put("✅")
+
+
 class PhoneJarvis:
     def __init__(self, token: str, allowed_user: int | None, respond, history_loader, cancel_task, turn_off) -> None:
         self.api = TelegramAPI(token)
@@ -118,6 +206,7 @@ class PhoneJarvis:
         self.jobs: queue.Queue = queue.Queue()
         self.working = threading.Event()
         self._answers: dict[str, tuple[threading.Event, list]] = {}
+        self._outbox: queue.Queue = queue.Queue()
 
     # ---------- plumbing ----------
 
@@ -128,17 +217,47 @@ class PhoneJarvis:
             print(f"[telegram] couldn't register the command menu: {e}")
         threading.Thread(target=self._poll, daemon=True, name="telegram-poll").start()
         threading.Thread(target=self._work, daemon=True, name="telegram-work").start()
+        threading.Thread(target=self._send_queued, daemon=True, name="telegram-send").start()
         print("[telegram] phone control on" + ("" if self.allowed else " (waiting for you to set TELEGRAM_ALLOWED_USER_ID)"))
 
     def send(self, text: str, **extra) -> dict | None:
         if self.chat_id is None:
             return None
-        text = re.sub(r"\*\*(.+?)\*\*|__(.+?)__", lambda m: m.group(1) or m.group(2), text)  # Telegram shows ** literally
         try:
-            return self.api.call("sendMessage", chat_id=self.chat_id, text=text[:MAX_MESSAGE] or "(empty)", **extra)
+            return self.api.call("sendMessage", chat_id=self.chat_id, text=_plain(text)[:MAX_MESSAGE] or "(empty)", **extra)
         except Exception as e:
             print(f"[telegram] couldn't send: {e}")
             return None
+
+    def later(self, job) -> None:
+        """Do a Telegram call in the background, in order with the others, so a task never waits on the network
+        for a side message (the "Yes sir, ..." note, "You said: ...")."""
+        self._outbox.put(job)
+
+    def send_later(self, text: str) -> None:
+        self.later(lambda: self.send(text))
+
+    def _flush(self) -> None:
+        """Wait until every background send has gone out, so the reply arrives after them."""
+        self._outbox.join()
+
+    def _send_queued(self) -> None:
+        while True:
+            job = self._outbox.get()
+            try:
+                job()
+            except Exception as e:
+                print(f"[telegram] couldn't send: {e}")
+            finally:
+                self._outbox.task_done()
+
+    def _keep_typing(self, done: threading.Event) -> None:
+        while not done.is_set():
+            try:
+                self.api.call("sendChatAction", chat_id=self.chat_id, action="typing")
+            except Exception:
+                pass
+            done.wait(TYPING_EVERY_S)
 
     def notify(self, text: str) -> None:
         """Timers and reminders also reach your phone, in case you're away from the PC."""
@@ -293,7 +412,7 @@ class PhoneJarvis:
                     if not value:
                         self.send("🎙 I couldn't make out that voice note.")
                         continue
-                    self.send(f"🎙 You said: {value}")
+                    self.send_later(f"🎙 You said: {value}")
                 self._task(value)
             except Exception as e:
                 traceback.print_exc()
@@ -331,17 +450,29 @@ class PhoneJarvis:
 
     def _task(self, text: str) -> None:
         self.working.set()
+        typing_done = threading.Event()
+        threading.Thread(target=self._keep_typing, args=(typing_done,), daemon=True).start()
+        live = LiveReply(self)
         try:
-            self.api.call("sendChatAction", chat_id=self.chat_id, action="typing")
             actions: list[str] = []
-            self.history, reply = self.respond(self.history, PHONE_NOTE + text, self._ask, self.send,
-                                               history_file=HISTORY_FILE, actions_out=actions)
+            self.history, reply = self.respond(self.history, PHONE_NOTE + text, self._ask, self.send_later,
+                                               history_file=HISTORY_FILE, actions_out=actions, on_text=live)
+        except Exception:
+            if live.finish():
+                live.settle()
+            raise
         finally:
+            typing_done.set()
             self.working.clear()
+        shown = live.finish()  # stop updating; the final text is put in below
         if reply is None:
+            if shown:
+                live.settle()
             self.send("🛑 Stopped." + (" Before that I'd done:\n" + self._proof(actions) if actions else ""))
             return
-        if reply:
+        if shown:
+            live.replace(reply)
+        elif reply:
             self.send(reply)
         if actions:
             self.send("What actually happened:\n" + self._proof(actions))
@@ -361,6 +492,7 @@ class PhoneJarvis:
 
     def _ask(self, question: str) -> bool:
         """Yes/No buttons on your phone for anything Jarvis would normally confirm out loud."""
+        self._flush()  # anything queued (the "Yes sir, ..." note) comes before the question
         key = uuid.uuid4().hex[:12]
         event, answer = threading.Event(), []
         self._answers[key] = (event, answer)

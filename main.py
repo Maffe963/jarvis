@@ -250,6 +250,7 @@ def start_team(say) -> None:
 def run_remote() -> None:
     """Phone control only: no microphone or speech, just the Telegram bot (and timers/reminders to the phone)."""
     warm_up()
+    threading.Thread(target=quick.load_apps, daemon=True).start()  # so "open Spotify" is instant
     phone = start_phone()
     if phone is None:
         print("Phone control isn't set up: add TELEGRAM_BOT_TOKEN to .env (see telegram_bot.py).")
@@ -269,6 +270,7 @@ def run_remote() -> None:
 
 def run_text() -> None:
     warm_up()
+    threading.Thread(target=quick.load_apps, daemon=True).start()  # so "open Spotify" is instant
     reminders.start()
     start_team(lambda msg: print(f"\nJarvis: {msg}"))
     print("Jarvis online (text mode). Type 'quit' to exit.\n")
@@ -403,8 +405,10 @@ def run_voice() -> None:
     microphone = select_microphone()
     print("Starting up...")
     warm_up()
+    threading.Thread(target=quick.load_apps, daemon=True).start()  # so "open Spotify" is instant
     wake_word._get_model()
     stt._get_model()
+    stt.warm_up()
     tts.warm_up()
     if speaker.enrolled() and speaker.available():
         speaker.embed(stt.np.zeros(32000, dtype=stt.np.float32))  # load the voice model now, not on first use
@@ -441,9 +445,9 @@ def run_voice() -> None:
 
     def wait_for_speech_to_finish() -> None:
         time.sleep(0.3)
-        with tts._lock:  # e.g. "Yes sir, closing Jarvis." is still being said in the background
-            pass
+        tts.wait_until_quiet()  # e.g. "Yes sir, closing Jarvis." is still being said in the background
 
+    early = stt.Early(speaker.is_user)  # transcribes at the first pause, so the text is ready when you finish
     interrupted = None       # audio of the user talking over Jarvis, to carry on recording from
     pending = None           # a correction the user spoke while Jarvis was working: the next request
     in_conversation = False  # after "hey Jarvis", keep listening without it until things go quiet
@@ -451,16 +455,17 @@ def run_voice() -> None:
     misfires = 0             # recordings in a row that turned out to be just noise
     try:
         while True:
+            early.started = None  # nothing guessed yet for this recording
             if pending is not None:
                 heard, pending = pending, None
             else:
                 if interrupted is not None:
-                    audio = record_until_silence(already_heard=interrupted)
+                    audio = record_until_silence(already_heard=interrupted, early=early)
                     interrupted = None
                 elif in_conversation:
                     print("[listening...]")
                     audio = record_until_silence(
-                        no_speech_timeout_s=FOLLOWUP_SECONDS if FOLLOWUP_SECONDS > 0 else 20)
+                        no_speech_timeout_s=FOLLOWUP_SECONDS if FOLLOWUP_SECONDS > 0 else 20, early=early)
                     if not audio.size:
                         if FOLLOWUP_SECONDS > 0:
                             end_conversation()
@@ -473,14 +478,15 @@ def run_voice() -> None:
                         # Reload while you're still talking, so it's ready by the time you finish.
                         on_standby = False
                         threading.Thread(target=warm_up, daemon=True).start()
-                        threading.Thread(target=stt._get_model, daemon=True).start()
-                    audio = record_until_silence()
-                mine, score = speaker.is_user(audio) if audio.size else (True, None)
+                        threading.Thread(target=stt.warm_up, daemon=True).start()
+                    audio = record_until_silence(early=early)
+                guess = early.result(audio, stt.speech_threshold()) if audio.size else None
+                (mine, score), text = guess or ((speaker.is_user(audio) if audio.size else (True, None)), None)
                 if not mine:  # the TV, someone else, a video...
                     print(f"[ignored: not your voice (match {score:.2f})]")
                     heard = ""
                 else:
-                    heard = clean_transcript(transcribe(audio))
+                    heard = clean_transcript(transcribe(audio) if text is None else text)
             in_conversation = FOLLOWUP_SECONDS != 0
             if not heard:
                 print("[nothing heard]")

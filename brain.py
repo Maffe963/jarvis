@@ -8,6 +8,7 @@ import sys
 import tempfile
 import threading
 import time
+import uuid
 from datetime import datetime
 
 from tools import facts, usage
@@ -51,7 +52,9 @@ def screen_context() -> str:
         from tools import system
 
         hwnd = win32gui.GetForegroundWindow()
-        window = next((w for w in system._app_windows() if w["hwnd"] == hwnd), None)
+        title = win32gui.GetWindowText(hwnd)
+        shown = hwnd and title and title not in ("Program Manager", "Settings") and win32gui.IsWindowVisible(hwnd)
+        window = system._window_info(hwnd, title) if shown else None  # just this window, not every one
         if window:
             parts.append(f'Front window: "{window["title"][:80]}" ({system._app_label(window)})')
     except Exception:
@@ -150,6 +153,11 @@ def _think_api(conversation_history: list[dict], system: str, confirm, acknowled
 
 # ---------- Claude Code subscription backend ----------
 
+INTERRUPT_WAIT_S = 3  # how long Claude Code gets to stop a turn before it's ended instead
+REFRESH_AFTER_TURNS = 40  # then a fresh Claude Code is started in a quiet moment (see _refresh)
+REFRESH_IDLE_S = 90
+
+
 class ClaudeCodeSession:
     """One long-running `claude -p` that takes a message per turn over stream-json.
 
@@ -199,6 +207,8 @@ class ClaudeCodeSession:
         self._events: queue.Queue = queue.Queue()
         self._stderr: list[str] = []
         self._fresh = True  # next message is the first this process sees
+        self._turns = 0     # turns this process has had (its context grows with each)
+        self._in_use = threading.Lock()  # held during a turn, so a refresh never cuts one off
         atexit.register(self.close)
 
     def _start(self) -> None:
@@ -218,6 +228,7 @@ class ClaudeCodeSession:
         self._events = queue.Queue()
         self._stderr = []
         self._fresh = True
+        self._turns = 0
         proc, events = self._proc, self._events
 
         def pump_stdout():
@@ -263,11 +274,60 @@ class ClaudeCodeSession:
         except OSError:
             pass
 
+    def _interrupt(self) -> bool:
+        """Stop the turn in progress without ending Claude Code; True once it has stopped."""
+        try:
+            self._proc.stdin.write(json.dumps({"type": "control_request", "request_id": uuid.uuid4().hex,
+                                               "request": {"subtype": "interrupt"}}) + "\n")
+            self._proc.stdin.flush()
+        except (OSError, AttributeError, ValueError):
+            return False
+        deadline = time.monotonic() + INTERRUPT_WAIT_S
+        while time.monotonic() < deadline:
+            try:
+                event = self._events.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            if event is None:
+                self._proc = None
+                return False
+            if event.get("type") == "result":
+                return True
+        return False
+
     def ask(self, history: list[dict], confirm, acknowledge=None, on_text=None) -> str:
+        with self._in_use:
+            try:
+                return self._ask(history, confirm, acknowledge, on_text)
+            finally:
+                self._turns += 1
+                if self._turns == REFRESH_AFTER_TURNS:
+                    timer = threading.Timer(REFRESH_IDLE_S, self._refresh)
+                    timer.daemon = True
+                    timer.start()
+
+    def _refresh(self) -> None:
+        """After many turns, start a fresh Claude Code (it gets the recent conversation replayed) while nobody's
+        waiting, so replies don't slow down as the context grows. If a request is running, try again later."""
+        if not self._in_use.acquire(blocking=False):
+            timer = threading.Timer(REFRESH_IDLE_S, self._refresh)
+            timer.daemon = True
+            timer.start()
+            return
+        try:
+            if self._proc is not None and self._proc.poll() is None:
+                self.close()
+                self._start()
+        finally:
+            self._in_use.release()
+
+    def _ask(self, history: list[dict], confirm, acknowledge=None, on_text=None) -> str:
         self.warm_up()
         self.bridge.confirm = confirm
         self.bridge.acknowledge = acknowledge
         text = _build_prompt(history) if self._fresh else history[-1]["content"]
+        if not self._fresh and len(history) >= 2 and str(history[-2].get("content", "")).startswith("[The user interrupted"):
+            text = f"{history[-2]['content']}\n\n{text}"  # what was already done before they stopped me
         message = json.dumps({"type": "user", "message": {"role": "user", "content": (
             f"{screen_context()}\n{text}")}}) + "\n"
         try:
@@ -276,18 +336,20 @@ class ClaudeCodeSession:
         except OSError:
             # The process died between turns: start over, replaying history.
             self._start()
-            return self.ask(history, confirm, acknowledge, on_text)
+            return self._ask(history, confirm, acknowledge, on_text)
         self._fresh = False
 
         deadline = time.monotonic() + 300
         used, model = {}, ""  # this turn's usage, by API message
         while True:
             if self.cancelled.is_set():
-                # Ending the process stops Claude mid-thought; a fresh one starts now (replaying history)
-                # so the user's correction isn't slowed down.
-                self.close()
-                if self.cancelled is task_cancelled:
-                    threading.Thread(target=self.warm_up, daemon=True).start()
+                # Ask Claude Code to stop mid-thought, keeping the process (and the conversation) for the next
+                # request. If it doesn't stop quickly, end it; a fresh one starts now (replaying history) so the
+                # user's correction isn't slowed down.
+                if not self._interrupt():
+                    self.close()
+                    if self.cancelled is task_cancelled:
+                        threading.Thread(target=self.warm_up, daemon=True).start()
                 raise TaskInterrupted()
             try:
                 event = self._events.get(timeout=0.2)

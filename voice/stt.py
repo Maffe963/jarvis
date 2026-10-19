@@ -11,6 +11,7 @@ from voice.mic import BLOCK, SAMPLE_RATE
 
 SPEECH_START_BLOCKS = 3  # 240 ms of sound before it counts as speech
 PRE_ROLL_BLOCKS = 6      # keep 480 ms from before speech was detected
+EARLY_SILENCE_S = 0.4    # after this much quiet, start transcribing in case they've finished (see Early)
 
 _model = None
 _model_lock = threading.Lock()  # loaded in the background when waking from standby
@@ -44,13 +45,16 @@ def record_until_silence(
     no_speech_timeout_s: float = 6.0,
     speech_start_blocks: int = SPEECH_START_BLOCKS,
     already_heard: list[np.ndarray] | None = None,
+    early=None,
 ) -> np.ndarray:
     """Record from the mic until the speaker stops talking. Returns float32 mono audio.
 
     Speech counts as started only after ~240 ms of sustained sound, so a single click or bump
     doesn't start (and then end) a recording. The moments just before that are kept so the
     first syllable isn't clipped. `already_heard` continues a recording that began elsewhere
-    (the user talking over Jarvis), so it counts as speech already started.
+    (the user talking over Jarvis), so it counts as speech already started. `early(audio)`, if given, is
+    called at each pause of EARLY_SILENCE_S with everything so far, so work on it can start before the pause
+    is long enough to end the recording.
     """
     if silence_threshold is None:
         silence_threshold = speech_threshold()
@@ -58,6 +62,7 @@ def record_until_silence(
         max_silence_s = float(os.environ.get("JARVIS_END_OF_SPEECH_S", "0.8"))
     blocks_per_s = SAMPLE_RATE / BLOCK
     max_silence_blocks = int(max_silence_s * blocks_per_s)
+    early_blocks = max(1, int(EARLY_SILENCE_S * blocks_per_s))
     max_blocks = int(max_record_s * blocks_per_s)
     max_idle_blocks = int(no_speech_timeout_s * blocks_per_s)
     pre_roll: deque[np.ndarray] = deque(maxlen=PRE_ROLL_BLOCKS)
@@ -85,6 +90,8 @@ def record_until_silence(
             silence_blocks = 0 if loud else silence_blocks + 1
             if silence_blocks > max_silence_blocks:
                 break
+            if early is not None and silence_blocks == early_blocks < max_silence_blocks:
+                early(np.concatenate(frames))
             continue
 
         pre_roll.append(block)
@@ -142,6 +149,47 @@ def listen_during_task(done: threading.Event, paused: threading.Event) -> str | 
         if loud_run >= SPEECH_START_BLOCKS:
             frames.extend(pre_roll)
     return None
+
+
+class Early:
+    """Checks the voice and transcribes at the first short pause, while record_until_silence waits to be sure
+    the user has finished. If they had, the result is ready the moment recording ends (saving the time
+    transcription takes); if they carried on talking, it's thrown away and done again at the next pause."""
+
+    def __init__(self, check_voice) -> None:
+        self.check_voice = check_voice  # audio -> (is it the user, score)
+        self.started: tuple[int, threading.Thread, list] | None = None
+
+    def __call__(self, audio: np.ndarray) -> None:
+        out: list = []
+
+        def work():
+            mine = self.check_voice(audio)
+            out.append((mine, transcribe(audio) if mine[0] else ""))
+
+        thread = threading.Thread(target=work, daemon=True, name="early-transcribe")
+        thread.start()
+        self.started = (len(audio), thread, out)
+
+    def result(self, audio: np.ndarray, threshold: float) -> tuple[tuple, str] | None:
+        """((is it the user, score), transcript) for `audio`, if the early guess covers all of it."""
+        if self.started is None:
+            return None
+        length, thread, out = self.started
+        tail = audio[length:]
+        if length > len(audio) or (tail.size and float(np.sqrt(np.mean(tail ** 2))) > threshold * 0.8):
+            return None  # they said more after it
+        thread.join()
+        return out[0] if out else None
+
+
+def warm_up() -> None:
+    """Run the speech model once (and load its voice detector), so the first real transcription isn't slow."""
+    try:
+        list(_get_model().transcribe(np.zeros(SAMPLE_RATE, dtype=np.float32), beam_size=1, language="en",
+                                     vad_filter=True)[0])
+    except Exception as e:
+        print(f"[stt] warm-up failed: {e}")
 
 
 def transcribe(audio: np.ndarray) -> str:
