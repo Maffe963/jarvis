@@ -57,25 +57,42 @@ def speak(text: str) -> bool:
     quickly and there are no gaps. Calls play in the order they were made (each one is prepared while the
     one before it is still playing), and playback can be stopped part-way.
     """
-    global _serving, _issued
+    global _serving, _issued, _playback
     if not text:
         return True
-    with _turn:
+    parts = _parts(text)
+    upcoming = _renderer.submit(_render, parts[0])
+    with _turn:  # from here on nothing can fail before this call's turn ends (see the finally)
         ticket, _issued = _issued, _issued + 1
     try:
-        parts = _parts(text)
-        upcoming = _renderer.submit(_render, parts[0])
         with _turn:
             _turn.wait_for(lambda: _serving == ticket)
         with _lock:
             _interrupted.clear()
-            for n in range(len(parts)):
-                audio, rate = upcoming.result()
-                if n + 1 < len(parts):
-                    upcoming = _renderer.submit(_render, parts[n + 1])
-                if _interrupted.is_set() or not _play(audio, rate):
-                    return False
-            return True
+            # One timeline for the whole reply, so barge-in compares the mic with what was really playing,
+            # including the echo of the previous sentence's last word.
+            start, env = None, np.zeros(0, dtype=np.float32)
+            speaking.set()
+            try:
+                for n in range(len(parts)):
+                    audio, rate = upcoming.result()
+                    if n + 1 < len(parts):
+                        upcoming = _renderer.submit(_render, parts[n + 1])
+                    if _interrupted.is_set():
+                        return False
+                    now = time.monotonic()
+                    start = now if start is None else start
+                    gap = max(0, int((now - start) / ENVELOPE_STEP_S) - len(env))
+                    env = np.concatenate([env, np.zeros(gap, dtype=np.float32), _envelope(audio, rate)])
+                    _playback = (start, env)
+                    sd.play(audio, samplerate=rate)
+                    sd.wait()  # returns early if stop() is called
+                    if _interrupted.is_set():
+                        return False
+                return True
+            finally:
+                speaking.clear()
+                _playback = None
     finally:
         with _turn:
             _serving = max(_serving, ticket + 1)
@@ -120,20 +137,6 @@ def _render(text: str) -> tuple[np.ndarray, int]:
             print(f"[tts] ElevenLabs failed ({e}); falling back to local voice")
     with _local_lock:
         return _render_local(text)
-
-
-def _play(audio: np.ndarray, rate: int) -> bool:
-    """Play one piece (with _lock held); False if stop() cut it off."""
-    global _playback
-    _playback = (time.monotonic(), _envelope(audio, rate))
-    speaking.set()
-    try:
-        sd.play(audio, samplerate=rate)
-        sd.wait()  # returns early if stop() is called
-    finally:
-        speaking.clear()
-        _playback = None
-    return not _interrupted.is_set()
 
 
 ENVELOPE_STEP_S = 0.02

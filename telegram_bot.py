@@ -180,6 +180,11 @@ class LiveReply:
         self.bot._flush()
         return self.message_id is not None
 
+    def settle(self) -> None:
+        """Leave what was written so far as it is, without the cursor (the task was stopped or failed)."""
+        if self.shown.endswith(" ▍"):
+            self._put(self.shown[:-2])
+
     def replace(self, reply: str) -> None:
         """Put the finished reply in place of the one being written (or remove it if there's nothing to say)."""
         if reply:
@@ -452,11 +457,17 @@ class PhoneJarvis:
             actions: list[str] = []
             self.history, reply = self.respond(self.history, PHONE_NOTE + text, self._ask, self.send_later,
                                                history_file=HISTORY_FILE, actions_out=actions, on_text=live)
+        except Exception:
+            if live.finish():
+                live.settle()
+            raise
         finally:
             typing_done.set()
             self.working.clear()
-            shown = live.finish(None)  # stop updating; the final text is put in below
+        shown = live.finish()  # stop updating; the final text is put in below
         if reply is None:
+            if shown:
+                live.settle()
             self.send("🛑 Stopped." + (" Before that I'd done:\n" + self._proof(actions) if actions else ""))
             return
         if shown:

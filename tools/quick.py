@@ -44,9 +44,11 @@ def _open(m):
     ("open my downloads", "open youtube.com") goes to Claude."""
     from tools import system
 
-    name = _window_name(m.group("app"))
-    if not name or len(name.split()) > 3 or any(w in name.split() for w in ("and", "then", "folder", "file", "website")):
-        return None
+    said = m.group("app").split()
+    if not said or said[0] in ("my", "the", "a", "this", "that", "it") or len(said) > 3 \
+            or any(w in said for w in ("and", "then", "folder", "file", "website")):
+        return None  # "open my photos" may mean the Pictures folder: Claude decides
+    name = " ".join(said)
     lowered = name.lower()
     if system._start_apps is None:  # reading the app list takes a few seconds: not now, but ready for next time
         threading.Thread(target=system._get_start_apps, daemon=True).start()
@@ -54,7 +56,11 @@ def _open(m):
     apps = system._start_apps
     if not any(a["Name"].lower() == lowered for a in apps):  # "youtube" isn't "YouTube Music": Claude decides
         return None
-    return "open_app", {"name": name, "monitor": m.group("m") or ""}
+    if m.group("m"):
+        if system._matching_windows(name):  # already open: move it there rather than start another copy
+            return "move_window_to_monitor", {"monitor": m.group("m"), "window": name}
+        return "open_app", {"name": name, "monitor": m.group("m")}
+    return "open_app", {"name": name, "monitor": ""}
 
 
 def load_apps() -> None:
@@ -105,7 +111,7 @@ COMMANDS = [
     (r"(send|text)( me)?( a)? (screenshot|screen shot|picture of my screens?)( of( my| the)? (?P<m>[a-z]+)"
      r"( screens?| monitors?)?)?( to( my)? phone)?",
      lambda m: ("send_screenshot", {"monitor": m.group("m") or ""})),
-    (r"(?:open|launch|start|pull up|bring up) (?P<app>[a-z0-9 .+'-]+?)(?: (?:on|to) (?:the |my )?(?P<m>left|right|main|"
+    (r"(?:open|launch|start) (?P<app>[a-z0-9 .+'-]+?)(?: (?:on|to) (?:the |my )?(?P<m>left|right|main|"
      r"middle|center|centre|primary|other|second|first|third|top|bottom|\d)(?: one)?(?: screen| monitor| display))?",
      lambda m: _open(m)),
     (r"(?:set |start )?(?:a |an )?(?:timer for (?P<n>\d{1,3}) (?P<u>second|sec|minute|min|hour)s?"
