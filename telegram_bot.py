@@ -110,6 +110,9 @@ class TelegramAPI:
             return resp.read()
 
 
+UNEXPLAINED_S = 30 * 60  # a file sent without a caption counts as what the next message is about for this long
+
+
 def incoming_file(message: dict) -> tuple[str, str, str] | None:
     """(file id, file name, kind) for a photo, video, GIF or file in a message, or None."""
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -240,6 +243,7 @@ class PhoneJarvis:
         self.chat_id: int | None = allowed_user  # in a private chat, the chat ID is the user's ID
         self.jobs: queue.Queue = queue.Queue()
         self.working = threading.Event()
+        self.unexplained: list[tuple[str, float]] = []  # files sent without a caption: the next message is about them
         self._answers: dict[str, tuple[threading.Event, list]] = {}
         self._outbox: queue.Queue = queue.Queue()
 
@@ -432,9 +436,13 @@ class PhoneJarvis:
                     path = self._save_incoming(file_id, name)
                     if not path:
                         continue
-                    self.send(f"📥 Saved to {path}")
-                    if not caption:
+                    if not caption:  # keep it in mind: the next message says what it's for
+                        asked = any(time.time() - at < UNEXPLAINED_S for _, at in self.unexplained)
+                        self.unexplained.append((path, time.time()))
+                        self.send(f"📥 Saved to {path}" + ("" if asked else "\nWhat should I do with it? (e.g. "
+                                                           "\"send it to the Video Editor and make it a Short\")"))
                         continue
+                    self.send(f"📥 Saved to {path}")
                     value = f"{caption}\n[The user just sent this file from their phone; it's saved at {path}]"
                     kind = "text"
                 if kind == "voice":
@@ -443,6 +451,11 @@ class PhoneJarvis:
                         self.send("🎙 I couldn't make out that voice note.")
                         continue
                     self.send_later(f"🎙 You said: {value}")
+                recent = [p for p, at in self.unexplained if time.time() - at < UNEXPLAINED_S]
+                self.unexplained.clear()
+                if recent:
+                    value += ("\n[Just before this message the user sent these files from their phone, saved at: "
+                              + "; ".join(recent) + ". This message is probably about them.]")
                 self._task(value)
             except Exception as e:
                 traceback.print_exc()

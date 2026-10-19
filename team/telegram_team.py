@@ -14,6 +14,7 @@ are answered on the dashboard there).
 """
 import json
 import os
+import re
 import threading
 import time
 import traceback
@@ -32,11 +33,27 @@ HELP = ("This is your agent team. Each agent gets its own topic here: whatever y
         "/stop - in an agent's topic, stop it (or /stop name, /stop all)\n"
         "/result - in an agent's topic, its final result (or /result name)\n"
         "/help - this message\n\n"
-        "Send a photo, screenshot, video or file in an agent's topic to give it to that agent.")
+        "Send a photo, screenshot, video or file in an agent's topic to give it to that agent. In General, start "
+        "with an agent's name instead: \"Video Editor: make this vertical\".")
 COMMANDS = [("new", "Start an agent: Name | role | task"), ("code", "Start a coder: repo | task"), ("team", "What each agent is doing"),
             ("stop", "Stop this agent (or: /stop name, /stop all)"), ("result", "This agent's final result"),
             ("help", "How the team chat works")]
 MARKS = {"done": "✅", "failed": "⚠️", "stopped": "⏹"}
+
+
+def addressed(words: str) -> tuple["agents.Agent | None", str]:
+    """The active agent a message starts with the name of, and the rest of it: "Video Editor: cut this",
+    "@video_editor cut this" and "hey job hunter, any news?" all work. The longest name wins ("Ghostwriter" isn't
+    "Writer")."""
+    text = (words or "").strip()
+    lead = r"^(?:@|(?:hey|hi|ok|okay|yo|to|for|ask)\b[\s,]*)?"
+    for agent in sorted(agents.active(), key=lambda a: -len(a.name)):
+        # the name's words with anything (or nothing) between them: "video editor", "video_editor", "VideoEditor"
+        name = r"[\s_.\-]*".join(re.escape(w) for w in agent.name.split())
+        found = re.match(lead + name + r"(?![A-Za-z0-9])", text, re.IGNORECASE)
+        if found:
+            return agent, text[found.end():].lstrip(" ,:;-–—>").strip()
+    return None, text
 
 
 def _split(text: str) -> list[str]:
@@ -315,17 +332,15 @@ class TeamBot:
         attached = incoming_file(message)
         if command:
             self._command(message, command, arg.strip(), here)
+        elif here is None:  # General (or All messages): it goes to the agent it starts with the name of
+            self._route_by_name(message, attached, (message.get("caption") or "") if attached else text)
         elif attached:
-            if here is None:
-                self._reply(message, "Send it in an agent's topic, and it goes to that agent.")
-            elif here.status in agents.FINISHED:
+            if here.status in agents.FINISHED:
                 self._reply(message, f"{here.name} has finished. Start a new agent with /new.")
             else:  # downloading can take a while: not on the thread that reads messages
                 threading.Thread(target=self._pass_file, args=(message, attached, here), daemon=True).start()
         elif not text:
             self._reply(message, "I can pass on text, photos, videos and files to agents.")
-        elif here is None:
-            self._reply(message, "Write in an agent's topic to talk to it, or start one with /new. /help for more.")
         elif here.status in agents.FINISHED:
             self._reply(message, f"{here.name} has {here.status if here.status != 'done' else 'finished'}. "
                                  "Start a new agent with /new.")
@@ -334,7 +349,27 @@ class TeamBot:
             if not result.startswith("Sent"):
                 self._reply(message, result)
 
-    def _pass_file(self, message: dict, attached: tuple[str, str, str], agent) -> None:
+    def _route_by_name(self, message: dict, attached: tuple | None, words: str) -> None:
+        """A message or file in General goes to the agent whose name it starts with ("Video Editor: cut this")."""
+        agent, rest = addressed(words)
+        if agent is None:
+            names = ", ".join(a.name for a in agents.active()) or "none yet (start one with /new)"
+            self._reply(message, ("Start the caption with an agent's name" if attached else
+                                  "Start with an agent's name") +
+                        f" to send it to that agent, e.g. \"Video Editor: make this vertical\".\nAgents: {names}")
+            return
+        if attached:
+            threading.Thread(target=self._pass_file, args=(message, attached, agent, rest, True), daemon=True).start()
+            return
+        if not rest:
+            self._reply(message, f"What should I tell {agent.name}?")
+            return
+        result = agents.deliver("user", agent.id, rest, via="telegram")
+        self._reply(message, f"➡️ Sent to {agent.name}; its answer will be in its topic." if result.startswith("Sent")
+                    else result)
+
+    def _pass_file(self, message: dict, attached: tuple[str, str, str], agent, caption: str | None = None,
+                   confirm: bool = False) -> None:
         """Save a photo, video or file sent in an agent's topic, and give that agent its path (and the caption)."""
         file_id, name, kind = attached
         try:
@@ -342,12 +377,14 @@ class TeamBot:
         except RuntimeError as e:
             self._reply(message, str(e))
             return
-        caption = (message.get("caption") or "").strip()
+        caption = (message.get("caption") or "").strip() if caption is None else caption.strip()
         what = {"photo": "a photo", "video": "a video"}.get(kind, "a file")
         note = f"[The user sent {what} on Telegram, saved at {path}. Open it with view_file.]"
         result = agents.deliver("user", agent.id, note + (f"\n{caption}" if caption else ""), via="telegram")
         if not result.startswith("Sent"):
             self._reply(message, result)
+        elif confirm:
+            self._reply(message, f"➡️ Sent to {agent.name}; its answer will be in its topic.")
 
     def _command(self, message: dict, command: str, arg: str, here) -> None:
         if command in ("/start", "/help"):
