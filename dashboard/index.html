@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jarvis Command Center</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barlow+Condensed:wght@500;700&family=Black+Ops+One&family=Cinzel:wght@600;800&family=Quicksand:wght@500;700&family=Exo+2:wght@500;700&family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Audiowide&family=Barlow+Condensed:wght@500;700&family=Black+Ops+One&family=Cinzel:wght@600;800&family=Quicksand:wght@500;700&family=Exo+2:wght@500;700&family=IM+Fell+English+SC&family=Oxanium:wght@600;700&family=Shippori+Mincho:wght@600;800&family=Special+Elite&family=Titillium+Web:wght@400;600;700&family=Zen+Kaku+Gothic+New:wght@500;700&family=Lilita+One&family=Nunito:wght@600;800&family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
@@ -349,6 +349,84 @@
   }
   body.aurora button.danger, body.aurora button.good { color: #fff; }
 
+  /* ---------- theme: Zen Garden (dusk in a Japanese garden; the one light theme: ink on rice paper, vermilion accents) ---------- */
+  body.zen {
+    --font: "Zen Kaku Gothic New", "Segoe UI", sans-serif; --bg: #f4ece0; --text: #2b2522; --muted: #7a6a5e; --accent: #c8372d; --accent-text: #fff8f0;
+    --good: #4f8a3c; --bad: #c8372d; --you: #a8741c; --msg: #8a4a9a; --line: #e2d4bf;
+    --title-font: 800 22px "Shippori Mincho", serif; --title-spacing: .14em; --title-shadow: none; --section-font: 800 13px "Shippori Mincho", serif;
+    --border: 1px solid #dccbb2; --header-bg: linear-gradient(180deg, #fffaf1, #f1e6d3); --chip-border: 1px solid #d8c6aa;
+    --chip-radius: 3px; --chip-bg: #fffaf1; --map-bg: linear-gradient(180deg, #c99abb 0, #f6b9a2 38%, #ffd9b0 52%, #e9dcc3 53%, #e2d3b6 100%);
+    --empty-text: #4a3c32; --empty-bg: #fffaf1e6; --panel: #f8f1e5; --radius: 4px; --radius-lg: 6px;
+    --approval-border: 1px solid #c8372d; --approval-bg: #fde9e2; --item-radius: 2px; --item-bg: #fffbf4; --item-text: #2b2522;
+    --item-meta: #8a7a6c; --item-shadow: 0 1px 0 #e2d4bf; --item-jarvis-bg: #fbeee4; --footer-bg: #f1e6d3; --input-bg: #fffdf8;
+    --input-border: 1px solid #d0bc9c; --input-text: #2b2522; --focus: #c8372d33; --placeholder: #a8988a;
+    --btn-bg: #c8372d; --btn-text: #fff8f0; --btn-border: 1px solid #a82a22; --btn-shadow: 0 2px 0 #8a1f18; --btn-danger: #6a2a2a; --btn-good: #4f7a3a;
+    --drawer-bg: #fffaf1f5; --drawer-border: 1px solid #d0bc9c; --drawer-text: #2b2522; --drawer-muted: #7a6a5e;
+    --drawer-shadow: 0 12px 30px #5a3a2a33; --drawer-title-font: 800 22px "Shippori Mincho", serif; --pre-bg: #fbf4e8; --pre-border: 1px solid #e2d4bf;
+    --step-line: #e2d4bf; --node-label: #2b2522; --node-sub: #6d5e52; --node-font: 800 14px "Shippori Mincho", serif;
+    --pill-bg: #fffaf1ee; --pill-text: #2b2522;
+  }
+  body.zen header { border-bottom: 3px solid #c8372d; }
+  body.zen header h1::before { content: "\26E9"; margin-right: 10px; color: #c8372d; font-family: "Segoe UI Symbol", sans-serif; }
+  body.zen button.danger, body.zen button.good { color: #fff8f0; border-color: transparent; }
+  body.zen .themes select option { background: #fffaf1; color: #2b2522; }
+  body.zen .lbl3d .name { background: #fffaf1ee; color: #2b2522; text-shadow: none; border: 1px solid #d8c6aa; border-left: 3px solid #c8372d; border-radius: 2px; }
+  body.zen .lbl3d .state, body.zen .lbl3d .doing { background: #fffaf1d9; text-shadow: none; }
+  body.zen .lbl3d .doing { color: #5a4a3e; }
+  body.zen .lbl3d .state { color: #2b2522; border-left: 3px solid var(--c); border-radius: 2px; }
+  body.zen .msg3d { background: #fffaf1; color: #2b2522; box-shadow: 0 3px 10px #5a3a2a33; }
+  body.zen #legend b, body.zen #roster .pill .st { color: #2b2522; }
+  body.zen #roster .pill { box-shadow: 0 2px 8px #5a3a2a22; }
+  body.zen #hint { color: #4a3c32; }
+
+  /* ---------- theme: Clockwork Workshop (steampunk: brass, copper and gaslight) ---------- */
+  body.clockwork {
+    --font: "Special Elite", "Courier New", monospace; --bg: #140d07; --text: #f1dfbf; --muted: #b0905e; --accent: #d9a441; --accent-text: #2a1a08;
+    --good: #a8e06a; --bad: #ff5a45; --you: #ffcf6a; --msg: #f0bf75; --line: #4a3420;
+    --title-font: 25px "IM Fell English SC", Georgia, serif; --title-spacing: .08em; --title-shadow: 0 2px 0 #000, 0 0 12px #d9a44155;
+    --section-font: 15px "IM Fell English SC", Georgia, serif;
+    --border: 1px solid #4a3420; --header-bg: linear-gradient(180deg, #3a2614, #1f140b); --chip-border: 1px solid #7a5a2a;
+    --chip-radius: 3px; --chip-bg: #24170c; --map-bg: radial-gradient(circle at 50% 58%, #4a311c 0, #1a110a 72%);
+    --empty-text: #f1dfbf; --empty-bg: #24170ccc; --panel: #1b120a; --radius: 4px; --radius-lg: 8px;
+    --approval-border: 1px solid #ff5a45; --approval-bg: #2e1008; --item-radius: 3px; --item-bg: #26190e; --item-text: #f1dfbf;
+    --item-meta: #a88a62; --item-shadow: inset 0 0 0 1px #3a2814; --item-jarvis-bg: #33220f; --footer-bg: #1b120a; --input-bg: #120b05;
+    --input-border: 1px solid #7a5a2a; --input-text: #f1dfbf; --focus: #d9a44133; --placeholder: #7a6040;
+    --btn-bg: linear-gradient(180deg, #ecc66a, #a8782a); --btn-text: #2a1a08; --btn-border: 1px solid #6a4a1a;
+    --btn-shadow: inset 0 1px 0 #fff4, 0 2px 0 #3a2410; --btn-danger: #8a2a1a; --btn-good: #5a7a2a;
+    --drawer-bg: #1f140bf2; --drawer-border: 2px solid #b8893a; --drawer-text: #f1dfbf; --drawer-muted: #b0905e;
+    --drawer-shadow: 0 0 0 4px #1f140b, 0 0 0 5px #7a5a2a, 0 14px 34px #000c; --drawer-title-font: 24px "IM Fell English SC", Georgia, serif;
+    --pre-bg: #120b05; --pre-border: 1px solid #4a3420; --step-line: #4a3420; --node-label: #ffeccb; --node-sub: #e0c08a;
+    --node-font: 15px "IM Fell English SC", Georgia, serif;
+  }
+  body.clockwork header { border-bottom: 3px double #b8893a; }
+  body.clockwork header h1::before { content: "\2699"; margin-right: 10px; font-family: "Segoe UI Symbol", sans-serif; }
+  body.clockwork button.danger, body.clockwork button.good { color: #f1dfbf; }
+  body.clockwork .item { border-left-width: 3px; }
+  body.clockwork .lbl3d .name { border: 1px solid #b8893a; border-radius: 3px; background: #1f140bd9; }
+  body.clockwork #roster .pill { border: 1px solid #b8893a; box-shadow: inset 0 1px 0 #ffffff14, 0 3px 10px #0007; }
+
+  /* ---------- theme: Mars Colony (red dust, white habitats, mission-control orange) ---------- */
+  body.mars {
+    --font: "Titillium Web", "Segoe UI", sans-serif; --bg: #1c0d08; --text: #f6e3d3; --muted: #c08a6e; --accent: #ff6a2b; --accent-text: #1c0800;
+    --good: #6dff8a; --bad: #ff3355; --you: #ffd36b; --msg: #9fe8ff; --line: #4a2216;
+    --title-font: 700 19px "Oxanium", var(--font); --title-spacing: .2em; --title-shadow: 0 0 12px #ff6a2b66; --section-font: 700 12px "Oxanium", var(--font);
+    --border: 1px solid #4a2216; --header-bg: linear-gradient(180deg, #3a170c, #1c0d08); --chip-border: 1px solid #6a3020;
+    --chip-radius: 6px; --chip-bg: #24100a; --map-bg: linear-gradient(180deg, #7a5a52 0, #c7906a 30%, #e6b48a 46%, #b5552e 47%, #6a2a16 100%);
+    --empty-text: #f6e3d3; --empty-bg: #24100acc; --panel: #1f0f09; --radius: 6px; --radius-lg: 10px;
+    --approval-border: 1px solid #ff3355; --approval-bg: #2e0a10; --item-radius: 5px; --item-bg: #2a140c; --item-text: #f6e3d3;
+    --item-meta: #c08a6e; --item-shadow: inset 0 0 0 1px #3a1a10; --item-jarvis-bg: #34180e; --footer-bg: #1f0f09; --input-bg: #140805;
+    --input-border: 1px solid #6a3020; --input-text: #f6e3d3; --focus: #ff6a2b33; --placeholder: #8a5a44;
+    --btn-bg: #ff6a2b; --btn-text: #1c0800; --btn-border: 1px solid #ff8a55; --btn-shadow: 0 0 12px #ff6a2b44; --btn-danger: #8a1a2a; --btn-good: #2a7a44;
+    --drawer-bg: #1f0f09f0; --drawer-border: 1px solid #ff6a2b88; --drawer-text: #f6e3d3; --drawer-muted: #c08a6e;
+    --drawer-shadow: 0 0 34px #ff6a2b22; --drawer-title-font: 700 20px "Oxanium", var(--font); --pre-bg: #140805; --pre-border: 1px solid #4a2216;
+    --step-line: #4a2216; --node-label: #fff; --node-sub: #ffd9c4; --node-font: 700 14px "Oxanium", var(--font);
+  }
+  body.mars header { border-bottom: 3px solid #ff6a2b; box-shadow: 0 3px 0 #f6e3d322; }
+  body.mars button.danger, body.mars button.good { color: #fff; }
+  body.mars .lbl3d .name { text-transform: uppercase; letter-spacing: .08em; font-size: 13.5px; border-bottom: 2px solid #ff6a2b; border-radius: 4px 4px 0 0; }
+  body.mars #roster .pill { text-transform: uppercase; letter-spacing: .05em; font-size: 12px; }
+  @media (max-width: 600px) { body.mars .lbl3d .name { font-size: 11px; letter-spacing: .03em; } body.mars #roster .pill { font-size: 11px; letter-spacing: 0; } }
+
   /* what's being said, riding along a message beam */
   .msg3d { pointer-events: none; width: max-content; max-width: 200px; white-space: normal; text-align: center; font: 12px/1.35 var(--font);
            padding: 4px 9px; border-radius: 8px; color: #fff; background: #000c; border: 1px solid var(--c); box-shadow: 0 0 14px var(--c); }
@@ -372,7 +450,7 @@
     <span class="chip"><span id="working-word">working</span> <b id="working">0</b></span>
     <span class="chip"><span id="needs-word">needs you</span> <b id="needs">0</b></span>
     <span class="chip" title="Standing specialists: always on, not counted in the limit"><span class="star">★</span><b id="standing">0</b> always on</span>
-    <label class="themes" title="Theme (keys 1-9)"><select id="themes"></select></label>
+    <label class="themes" title="Theme (keys 1-0, [ and ] to cycle)"><select id="themes"></select></label>
     <div class="themes"><button id="dim" title="Switch between the 3D and 2D view">3D</button>
       <button id="wide" title="Expand the map to fill the window (F); double-click for full screen">Expand</button></div>
   </div>
@@ -382,7 +460,7 @@
     <div id="scene3d"></div>
     <div id="roster"></div>
     <div id="legend"></div>
-    <div id="hint">drag to orbit · scroll to zoom · click an agent · right-click for actions · 1-9 themes · L key · F expand · space spin · esc reset</div>
+    <div id="hint">drag to orbit · scroll to zoom · click an agent · right-click for actions · 1-0 [ ] themes · L key · F expand · space spin · esc reset</div>
     <svg id="svg"></svg>
     <div class="empty" id="empty"></div>
     <div id="drawer"></div>
@@ -451,6 +529,10 @@ const ROLE_ICONS = [[/research|find|search|scout/i, "🏹"], [/writ|draft|blurb|
                     [/code|build|dev|engineer/i, "🔨"], [/plan|strateg|lead|manag/i, "🗺️"], [/data|analy|number|stat/i, "📊"],
                     [/design|art|visual/i, "🎨"], [/email|mail|message|comm/i, "🕊️"]];
 const roleIcon = info => (ROLE_ICONS.find(([re]) => re.test(info.role + " " + info.name)) || [0, "⚔️"])[1];
+const gearPoints = (r, teeth) => Array.from({ length: teeth * 4 }, (_, i) => {
+  const a = (Math.floor(i / 4) + [0, .18, .45, .63][i % 4]) / teeth * Math.PI * 2, rad = i % 4 === 1 || i % 4 === 2 ? r : r * .84;
+  return `${Math.cos(a) * rad},${Math.sin(a) * rad}`;
+}).join(" ");
 const hexPoints = r => Array.from({ length: 6 }, (_, i) => { const a = Math.PI / 3 * i + Math.PI / 6; return `${Math.cos(a) * r},${Math.sin(a) * r}`; }).join(" ");
 // the 2D look shared by the glowing themes: a shape outlined in the status colour with the name inside
 function neonTheme({ words, status, words2, fill, done, glow, shape }) {
@@ -677,6 +759,47 @@ const THEMES = {
     shape: (g, kind, r, attrs) => kind === "user" ? el("polygon", { points: `0,${-r} ${r},${-r * .1} ${r * .8},${r * .8} ${-r * .8},${r * .8} ${-r},${-r * .1}`, ...attrs }, g)
       : el("polygon", { points: `0,${-r * 1.15} ${r * .6},0 0,${r * 1.15} ${-r * .6},0`, ...attrs }, g),   // a crystal
   }),
+
+  zen: neonTheme({
+    words: { title: "JARVIS · ZEN GARDEN", jarvis: "Jarvis", user: "Tea House", agents: "lanterns", working: "glowing",
+             needs: "await you", feed: "GARDEN JOURNAL", send: "Send", placeholder: "Ask Jarvis, calmly...",
+             empty: 'The garden is still. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "bows and asks your OK" },
+    status: { starting: "#d9761c", working: "#d9761c", waiting: "#5a6fae", "needs you": "#c8372d", done: "#4f8a3c", stopped: "#8a8580", failed: "#c8372d" },
+    words2: { starting: "kindling", working: "glowing", waiting: "resting", "needs you": "awaits you", done: "in bloom",
+              stopped: "put out", failed: "fallen" },
+    fill: "#fffaf1", done: "#4f8a3c",
+    shape: (g, kind, r, attrs) => kind === "jarvis" ? el("polygon", { points: `0,${-r} ${r * .55},${-r * .45} ${r * .4},${-r * .45} ${r * .95},${r * .2} ${r * .7},${r * .2} ${r * .85},${r * .8} ${-r * .85},${r * .8} ${-r * .7},${r * .2} ${-r * .95},${r * .2} ${-r * .4},${-r * .45} ${-r * .55},${-r * .45}`, ...attrs }, g)   // a pagoda
+      : kind === "user" ? el("polygon", { points: `0,${-r * .8} ${r * 1.1},${-r * .1} ${r * .8},${-r * .1} ${r * .8},${r * .75} ${-r * .8},${r * .75} ${-r * .8},${-r * .1} ${-r * 1.1},${-r * .1}`, ...attrs }, g)
+      : el("rect", { x: -r * 1.05, y: -r * .75, width: r * 2.1, height: r * 1.5, rx: r * .55, ...attrs }, g),   // a paper lantern
+  }),
+
+  clockwork: neonTheme({
+    words: { title: "JARVIS · CLOCKWORK WORKSHOP", jarvis: "JARVIS", user: "Workbench", agents: "automatons", working: "ticking",
+             needs: "need you", feed: "WORKSHOP LEDGER", send: "Engage", placeholder: "Wire an order to Jarvis...",
+             empty: 'The workshop is still. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "requests your stamp" },
+    status: { starting: "#ffc46a", working: "#ffb347", waiting: "#6fc2c9", "needs you": "#ff4a3a", done: "#a8e06a", stopped: "#5a4a3e", failed: "#ff4a3a" },
+    words2: { starting: "winding up", working: "ticking", waiting: "idling", "needs you": "needs you", done: "chimed",
+              stopped: "unwound", failed: "jammed" },
+    fill: "#26190e", done: "#a8e06a", glow: true,
+    shape: (g, kind, r, attrs) => kind === "user" ? el("rect", { x: -r * .9, y: -r * .65, width: r * 1.8, height: r * 1.3, rx: 6, ...attrs }, g)
+      : el("polygon", { points: gearPoints(r, kind === "jarvis" ? 16 : 10), ...attrs }, g),
+  }),
+
+  mars: neonTheme({
+    words: { title: "JARVIS · MARS COLONY", jarvis: "HAB COMMAND", user: "Your Rover", agents: "modules", working: "online",
+             needs: "need you", feed: "MISSION CONTROL", send: "Uplink", placeholder: "Uplink an order to Jarvis...",
+             empty: 'The colony is quiet. Tell Jarvis something like "get a researcher and a writer to put together a guide to budget mechanical keyboards".',
+             approval: "requests a go / no-go" },
+    status: { starting: "#3ee0ff", working: "#3ee0ff", waiting: "#c6b8ff", "needs you": "#ff3355", done: "#6dff8a", stopped: "#6a5a52", failed: "#ff3355" },
+    words2: { starting: "landing", working: "online", waiting: "standby", "needs you": "awaiting go", done: "mission success",
+              stopped: "powered down", failed: "signal lost" },
+    fill: "#2a140c", done: "#6dff8a", glow: true,
+    shape: (g, kind, r, attrs) => kind === "jarvis" ? el("path", { d: `M${-r} ${r * .55} A${r} ${r} 0 0 1 ${r} ${r * .55} Z`, ...attrs }, g)   // the dome
+      : kind === "user" ? el("rect", { x: -r, y: -r * .5, width: r * 2, height: r, rx: r * .25, ...attrs }, g)
+      : el("polygon", { points: hexPoints(r), ...attrs }, g),
+  }),
 };
 let T = THEMES.command, themeKey = "command";
 
@@ -858,9 +981,11 @@ document.addEventListener("click", ev => { if (!ev.target.closest("#ctx")) docum
 document.addEventListener("keydown", ev => {
   if (ev.target.tagName === "INPUT") { if (ev.key === "Escape") ev.target.blur(); return; }
   if (ev.target.tagName === "SELECT") ev.target.blur();   // the shortcuts still work after using the theme menu
-  if (/^[1-9]$/.test(ev.key)) ev.preventDefault();
-  const keys = Object.keys(THEMES);
-  if (/^[1-9]$/.test(ev.key) && keys[+ev.key - 1]) applyTheme(keys[+ev.key - 1], true);
+  if (/^[0-9[\]]$/.test(ev.key)) ev.preventDefault();
+  const keys = Object.keys(THEMES), at = keys.indexOf(themeKey);
+  const pick = ev.key === "[" ? (at + keys.length - 1) % keys.length : ev.key === "]" ? (at + 1) % keys.length   // [ ] cycle
+             : /^[0-9]$/.test(ev.key) ? (+ev.key || 10) - 1 : -1;                                                   // 1-9, 0 = 10th
+  if (keys[pick]) applyTheme(keys[pick], true);
   else if (ev.key === "Escape") { closeDrawer(); scene3d?.reset(); document.getElementById("ctx").style.display = "none"; }
   else if (ev.key === "f" || ev.key === "F") toggleWide();
   else if (ev.key === "l" || ev.key === "L") toggleLegend();
