@@ -30,8 +30,9 @@ PUBLIC_URL = os.environ.get("JARVIS_DASHBOARD_URL", "").strip().rstrip("/")  # e
 PASSWORD = os.environ.get("JARVIS_DASHBOARD_PASSWORD", "").strip()  # lets any browser sign in, without the secret link
 SESSIONS_FILE = os.path.join(os.path.dirname(HERE), "memory", "dashboard_sessions.json")
 SESSION_DAYS = 30
-MAX_FAILURES = 5          # wrong passwords allowed per FAILURE_WINDOW_S, from anywhere, before sign-in pauses
-FAILURE_WINDOW_S = 15 * 60
+MAX_FAILURES = 5          # wrong passwords allowed per FAILURE_WINDOW_S from one address before it's paused
+MAX_ALL_FAILURES = 30     # from everywhere together; past that the password pauses for everyone (the /dashboard link
+FAILURE_WINDOW_S = 15 * 60  # from Telegram still works, so you're never locked out)
 
 
 def _token() -> str:
@@ -135,43 +136,60 @@ def _command(text: str) -> None:
 
 # ---------- signing in with a password (when JARVIS_DASHBOARD_PASSWORD is set) ----------
 
-_failures: list[float] = []
+_failures: list[tuple[float, str]] = []  # (when, from which address)
 _login_lock = threading.Lock()
-
-
-def _sessions() -> dict:
-    """{sha256 of a session key: expiry time}. Only hashes are stored, so the file can't be used to sign in."""
-    try:
-        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
-            return {k: v for k, v in json.load(f).items() if v > time.time()}
-    except (FileNotFoundError, json.JSONDecodeError, AttributeError):
-        return {}
 
 
 def _hash(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+PASSWORD_ID = _hash("jarvis-dashboard:" + PASSWORD)[:16]  # sign-ins made with an earlier password stop working
+
+
+def _sessions() -> dict:
+    """{sha256 of a session key: {"expires", "password"}}. Only hashes are stored, so the file can't sign anyone in."""
+    try:
+        with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+            found = json.load(f)
+        return {k: v for k, v in found.items() if isinstance(v, dict) and v.get("expires", 0) > time.time()}
+    except (FileNotFoundError, json.JSONDecodeError, AttributeError, OSError):
+        return {}
+
+
+def _save_sessions(sessions: dict) -> None:
+    tmp = SESSIONS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(sessions, f)
+    os.replace(tmp, SESSIONS_FILE)  # never half-written while someone is being checked
+
+
 def _new_session() -> str:
     key = secrets.token_urlsafe(32)
     with _login_lock:
         sessions = _sessions()
-        sessions[_hash(key)] = time.time() + SESSION_DAYS * 86400
-        with open(SESSIONS_FILE, "w", encoding="utf-8") as f:
-            json.dump(sessions, f)
+        sessions[_hash(key)] = {"expires": time.time() + SESSION_DAYS * 86400, "password": PASSWORD_ID}
+        _save_sessions(sessions)
     return key
 
 
-def _check_password(given: str) -> str:
-    """'ok', 'wrong' or 'paused' (too many wrong tries lately)."""
+def _end_session(key: str) -> None:
+    with _login_lock:
+        sessions = _sessions()
+        if sessions.pop(_hash(key), None) is not None:
+            _save_sessions(sessions)
+
+
+def _check_password(given: str, address: str) -> str:
+    """'ok', 'wrong' or 'paused' (too many wrong tries lately from that address, or from everywhere)."""
     with _login_lock:
         now = time.time()
-        _failures[:] = [t for t in _failures if now - t < FAILURE_WINDOW_S]
-        if len(_failures) >= MAX_FAILURES:
+        _failures[:] = [f for f in _failures if now - f[0] < FAILURE_WINDOW_S]
+        if len(_failures) >= MAX_ALL_FAILURES or sum(1 for _, a in _failures if a == address) >= MAX_FAILURES:
             return "paused"
         if PASSWORD and secrets.compare_digest(given.encode(), PASSWORD.encode()):
             return "ok"
-        _failures.append(now)
+        _failures.append((now, address))
     time.sleep(1)  # slows guessing down
     return "wrong"
 
@@ -195,16 +213,25 @@ class Handler(BaseHTTPRequestHandler):
     def _host_ok(self) -> bool:
         return self.headers.get("Host", "").split(":")[0].lower() in HOSTS
 
-    def _signed_in(self) -> bool:
-        if not PASSWORD:
-            return False
+    def _session_key(self) -> str:
         cookie = http.cookies.SimpleCookie()
         try:
             cookie.load(self.headers.get("Cookie", ""))
         except http.cookies.CookieError:
-            return False
+            return ""
         key = cookie.get("jarvis_session")
-        return bool(key) and _sessions().get(_hash(key.value), 0) > time.time()
+        return key.value if key else ""
+
+    def _signed_in(self) -> bool:
+        key = self._session_key() if PASSWORD else ""
+        return bool(key) and (_sessions().get(_hash(key)) or {}).get("password") == PASSWORD_ID
+
+    def _address(self) -> str:
+        """Who's asking: behind Tailscale Funnel every request comes from this PC, with the visitor's address added."""
+        if self.client_address[0] in ("127.0.0.1", "::1"):
+            forwarded = self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            return forwarded or "this PC"
+        return self.client_address[0]
 
     def _authorized(self) -> bool:
         query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -214,11 +241,15 @@ class Handler(BaseHTTPRequestHandler):
         return secrets.compare_digest(given.encode(), TOKEN.encode()) or self._signed_in()
 
     def _login(self) -> None:
-        length = min(int(self.headers.get("Content-Length", 0) or 0), 4000)
+        try:
+            length = max(0, min(int(self.headers.get("Content-Length", 0) or 0), 4000))
+        except ValueError:
+            length = 0
         form = urllib.parse.parse_qs(self.rfile.read(length).decode("utf-8", "replace"))
-        result = _check_password(form.get("password", [""])[0])
+        result = _check_password(form.get("password", [""])[0], self._address())
         if result != "ok":
-            error = "Too many wrong tries. Wait 15 minutes." if result == "paused" else "That's not the password."
+            error = ("Too many wrong tries. Wait 15 minutes, or open the link from /dashboard in Telegram."
+                     if result == "paused" else "That's not the password.")
             if result == "wrong":
                 events.emit("jarvis", direction="out", text="Someone typed a wrong dashboard password.")
             self._send(401, LOGIN_PAGE.replace("{error}", error).encode(), "text/html; charset=utf-8")
@@ -297,10 +328,22 @@ class Handler(BaseHTTPRequestHandler):
         if PASSWORD and self._host_ok() and urllib.parse.urlparse(self.path).path == "/login":
             self._login()
             return
+        if PASSWORD and self._host_ok() and urllib.parse.urlparse(self.path).path == "/logout":
+            if self._session_key():
+                _end_session(self._session_key())
+            self.send_response(303)
+            self.send_header("Set-Cookie", "jarvis_session=; Path=/; Max-Age=0")
+            self.send_header("Location", "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if not self._authorized() or (not self.headers.get("Content-Type", "").startswith("application/json")):
             self._send(403, b"", "text/plain")
             return
-        length = min(int(self.headers.get("Content-Length", 0)), 100_000)
+        try:
+            length = max(0, min(int(self.headers.get("Content-Length", 0) or 0), 100_000))
+        except ValueError:
+            length = 0
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:

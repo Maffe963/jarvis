@@ -4,6 +4,7 @@ it), the plan's rate-limit notices Claude Code passes on, and the user's own Cla
 Jarvis's sessions run with --no-session-persistence, so they never show up in Claude Code's own transcripts
 (~/.claude/projects); those transcripts are the user's own sessions, read here for the dashboard.
 """
+import contextlib
 import glob
 import json
 import os
@@ -19,6 +20,29 @@ MAX_LOG_BYTES = 3_000_000
 KEEP_DAYS = 8
 
 _lock = threading.Lock()
+
+
+@contextlib.contextmanager
+def _shared_lock():
+    """Jarvis and the team service both write these files: one at a time, across both processes."""
+    with _lock:
+        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+        with open(LOG_FILE + ".lock", "a+b") as handle:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)  # retries for up to 10 seconds
+            else:
+                import fcntl
+                fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if os.name == "nt":
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def tokens(usage: dict) -> dict:
@@ -38,21 +62,20 @@ def record(who: str, by_message: dict, model: str = "") -> None:
     if not any(total.values()):
         return
     line = json.dumps({"t": round(time.time()), "who": who, "model": model, "calls": len(by_message), **total})
-    with _lock:
-        try:
-            os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    try:
+        with _shared_lock():
             with open(LOG_FILE, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
             if os.path.getsize(LOG_FILE) > MAX_LOG_BYTES:
                 _trim()
-        except OSError as e:
-            print(f"[usage] couldn't record: {e}")
+    except OSError as e:
+        print(f"[usage] couldn't record: {e}")
 
 
 def _trim() -> None:
     cutoff = time.time() - KEEP_DAYS * 86400
     keep = [e for e in _entries() if e.get("t", 0) >= cutoff]
-    tmp = LOG_FILE + ".tmp"
+    tmp = f"{LOG_FILE}.{os.getpid()}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.writelines(json.dumps(e) + "\n" for e in keep[-20000:])
     os.replace(tmp, LOG_FILE)
@@ -64,17 +87,17 @@ def record_limit(event: dict) -> None:
     if not isinstance(info, dict) or not info:
         return
     kind = str(info.get("rateLimitType") or info.get("type") or "limit")
-    with _lock:
-        limits = _limits()
-        limits[kind] = {**{k: v for k, v in info.items() if isinstance(v, (str, int, float, bool))},
-                        "seen": round(time.time())}
-        try:
-            tmp = LIMITS_FILE + ".tmp"
+    try:
+        with _shared_lock():
+            limits = _limits()
+            limits[kind] = {**{k: v for k, v in info.items() if isinstance(v, (str, int, float, bool))},
+                            "seen": round(time.time())}
+            tmp = f"{LIMITS_FILE}.{os.getpid()}.tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(limits, f, indent=2)
             os.replace(tmp, LIMITS_FILE)
-        except OSError:
-            pass
+    except OSError:
+        pass
 
 
 def _limits() -> dict:
@@ -176,7 +199,7 @@ def claude_code_sessions(days: int = KEEP_DAYS) -> list[dict]:
                 continue
             s = _read_transcript(path)
             if s and s["messages"]:
-                found.append(s)
+                found.append({**s, "messages": dict(s["messages"])})  # a copy: other requests keep reading files
         for path in [p for p, s in _files.items() if s.get("mtime", 0) < cutoff]:
             _files.pop(path, None)  # don't keep old sessions in memory
     return sorted(found, key=lambda s: s["last"], reverse=True)

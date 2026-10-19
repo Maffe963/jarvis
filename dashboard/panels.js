@@ -101,7 +101,8 @@
           <span style="margin-left:auto;font-weight:800">${w.percent}%</span></div>${bar(w.percent)}<div class="meta">${esc(resets(w.resets))}</div></div>`).join("");
       else html += `<div class="none">Plan limits aren't available: ${esc((d.plan && d.plan.error) || "unknown")}.</div>`;
       for (const [kind, l] of Object.entries(d.limits || {})) {
-        if (l.status && l.status !== "allowed") html += `<div class="card" style="--c:var(--bad)"><b>Limit reached: ${esc(kind.replace(/_/g, " "))}</b>
+        const until = typeof l.resetsAt === "number" ? l.resetsAt * 1000 : Date.parse(l.resetsAt || "");
+        if (l.status === "rejected" && until > Date.now()) html += `<div class="card" style="--c:var(--bad)"><b>Limit reached: ${esc(kind.replace(/_/g, " "))}</b>
           <div class="meta">${esc(l.status)} · ${esc(resets(l.resetsAt))}</div></div>`;
       }
       const t = d.totals;
@@ -196,7 +197,8 @@
       if (data && data.error && !Array.isArray(data)) panel.innerHTML = `<div class="err">Couldn't load this: ${esc(data.error)}</div>`;
       else {
         const top = panel.scrollTop;
-        panel.innerHTML = `<div class="ptools"><button class="grow" data-grow="1">${wide ? "⇥ narrower" : "⇤ wider"}</button></div>` + RENDER[shown](data);
+        panel.innerHTML = `<div class="ptools">${TOKEN ? "" : '<form method="post" action="/logout"><button class="grow">Sign out</button></form>'}` +
+          `<button class="grow" data-grow="1">${wide ? "⇥ narrower" : "⇤ wider"}</button></div>` + RENDER[shown](data);
         panel.scrollTop = top;
       }
     } catch (e) {
