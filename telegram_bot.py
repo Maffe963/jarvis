@@ -496,7 +496,7 @@ class PhoneJarvis:
         try:
             actions: list[str] = []
             self.history, reply = self.respond(self.history, PHONE_NOTE + text, self._ask, self.send_later,
-                                               history_file=HISTORY_FILE, actions_out=actions, on_text=live)
+                                               history_file=HISTORY_FILE, actions_out=actions, on_text=live, via="telegram")
         except Exception:
             if live.finish():
                 live.settle()

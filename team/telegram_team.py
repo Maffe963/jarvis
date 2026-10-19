@@ -63,6 +63,11 @@ def _split(text: str) -> list[str]:
     return [text[i:i + MAX_MESSAGE] for i in range(0, len(text), MAX_MESSAGE)]
 
 
+def _short_task(task: str) -> str:
+    first = task.split("\n(You're helping")[0].strip()
+    return first if len(first) <= 200 else first[:199] + "…"
+
+
 class TeamBot:
     def __init__(self, token: str, allowed: int | None) -> None:
         self.api = TelegramAPI(token)
@@ -109,20 +114,24 @@ class TeamBot:
                 raise RuntimeError(body.get("description", str(e))) from None
         raise RuntimeError("Telegram kept saying to slow down")
 
-    def post(self, text: str, thread: int | None = None, **extra) -> dict | None:
-        """Send to the team group (a topic, or General), splitting long text. Returns the last message sent."""
+    def post(self, text: str, thread: int | None = None, quiet: bool = False, **extra) -> dict | None:
+        """Send to the team group (a topic, or General), splitting long text. Returns the last message sent.
+        `quiet` posts it without a notification sound: only what needs the user (questions, approvals, results,
+        problems, reports) pings their phone."""
         if self.chat_id is None:
             return None
         sent = None
         for i, part in enumerate(_split(text)):
             params = {"chat_id": self.chat_id, "text": part, **(extra if i == len(_split(text)) - 1 else {})}
+            if quiet:
+                params["disable_notification"] = True
             if thread:
                 params["message_thread_id"] = thread
             try:
                 sent = self._call("sendMessage", **params)
             except Exception as e:
                 if thread and "thread" in str(e).lower():  # the topic was deleted: post in General instead
-                    return self.post(text, None, **extra)
+                    return self.post(text, None, quiet, **extra)
                 print(f"[team telegram] couldn't send: {e}")
                 return None
         return sent
@@ -195,22 +204,35 @@ class TeamBot:
         if kind == "cleared":  # finished agents taken off the team: close their topics (history stays readable)
             for agent_id in e.get("agents", []):
                 thread = self.state["topics"].pop(agent_id, None)
-                if thread:
+                if thread and thread not in self.state["topics"].values():  # not a specialist's, shared by its helper
                     try:
                         self._call("closeForumTopic", chat_id=self.chat_id, message_thread_id=thread)
                     except Exception as err:
                         print(f"[team telegram] couldn't close a topic: {err}")
             self._save()
             return
+        if kind == "agent" and e.get("parent"):  # a specialist's helper: lives quietly in the specialist's topic
+            parent = agents.find(e["parent"])
+            thread = self._topic(parent.id) if parent else None
+            if thread:
+                self.state["topics"][e["agent"]] = thread
+                self._save()
+            self.post(f"🧩 Started {e['name']}: {_short_task(e['task'])}", thread, quiet=True)
+            return
         if kind == "agent":
             thread = self._make_topic(e["agent"], e["name"], e["role"])
             if e.get("kind") == "standing":
+                welcomed = self.state.setdefault("welcomed", [])
+                if e["name"] in welcomed:  # a specialist back after a restart: no second welcome
+                    return
+                welcomed.append(e["name"])
+                self._save()
                 self.post(f"⭐ {e['name']} is on your team for good: {e['role']}.\n\nWrite here any time to talk "
-                          "to it. It keeps notes on what it learns, and its scheduled reports show up here.", thread)
+                          "to it. It keeps notes on what it learns, and its scheduled reports show up here.", thread, quiet=True)
             else:
                 self.post(f"📋 {e['name']} ({e['role']}) is on it.\n\nTask:\n{e['task']}\n\n"
-                          "Write here to talk to it.", thread)
-            self.post(f"🆕 {e['name']} joined the team: {e['role']}", self._all_topic())
+                          "Write here to talk to it.", thread, quiet=True)
+            self.post(f"🆕 {e['name']} joined the team: {e['role']}", self._all_topic(), quiet=True)
         elif kind == "message":
             sender, to, text = e["sender"], e["to"], e["text"]
             if e.get("kind") == "update":
@@ -219,24 +241,28 @@ class TeamBot:
                 return
             if to == "user":
                 self.post(f"❓ {text}\n\n(Reply here to answer.)", self._topic(sender))
-                self.post(f"❓ {self._name(sender)} asked you: {text}", self._all_topic())
+                self.post(f"❓ {self._name(sender)} asked you: {text}", self._all_topic(), quiet=True)
                 return
-            self.post(f"{self._name(sender)} → {self._name(to)}: {text}", self._all_topic())
+            self.post(f"{self._name(sender)} → {self._name(to)}: {text}", self._all_topic(), quiet=True)
             if self._topic(sender):
-                self.post(f"➡️ To {self._name(to)}: {text}", self._topic(sender))
+                self.post(f"➡️ To {self._name(to)}: {text}", self._topic(sender), quiet=True)
             if self._topic(to) and e.get("via") != "telegram":  # what you typed there is already there
                 origin = {"jarvis": "You (via Jarvis)", "dashboard": "You (on the dashboard)"}.get(
                     e.get("via", ""), self._name(sender))
-                self.post(f"💬 From {origin}: {text}", self._topic(to))
+                self.post(f"💬 From {origin}: {text}", self._topic(to), quiet=True)
+        elif kind == "result" and getattr(agents.find(e["agent"]), "parent", ""):
+            self.post(f"🧩 {self._name(e['agent'])} is done.", self._topic(e["agent"]), quiet=True)  # the specialist reports
         elif kind == "result":
             self.post(f"✅ Result:\n\n{e['text']}", self._topic(e["agent"]))
-            self.post(f"✅ {self._name(e['agent'])} finished.", self._all_topic())
+            self.post(f"✅ {self._name(e['agent'])} finished.", self._all_topic(), quiet=True)
+        elif kind == "status" and getattr(agents.find(e["agent"]), "parent", ""):
+            return  # a helper's ups and downs don't rename its specialist's topic
         elif kind == "status" and e["status"] in MARKS:
             agent, thread = agents.find(e["agent"]), self._topic(e["agent"])
             if e["status"] == "failed":
                 self.post(f"⚠️ It ran into a problem: {e.get('note', '')}", thread)
             elif e["status"] == "stopped":
-                self.post("⏹ Stopped.", thread)
+                self.post("⏹ Stopped.", thread, quiet=True)
             if agent and thread:
                 try:
                     self._call("editForumTopic", chat_id=self.chat_id, message_thread_id=thread,
@@ -255,7 +281,7 @@ class TeamBot:
                 try:
                     self._call("editForumTopic", chat_id=self.chat_id, message_thread_id=thread,
                                name=f"🤖 {agent.name} · {agent.role}"[:128])
-                    self.post("▶️ Back on the team.", thread)
+                    self.post("▶️ Back on the team.", thread, quiet=True)
                 except Exception:
                     pass
         elif kind == "approval":

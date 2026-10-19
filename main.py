@@ -93,7 +93,7 @@ offline_note_given = threading.Event()  # say 'using my offline brain' once, not
 
 
 def respond(history: list[dict], user_text: str, confirm, say, history_file: str = HISTORY_FILE,
-            actions_out: list[str] | None = None, on_text=None) -> tuple[list[dict], str | None]:
+            actions_out: list[str] | None = None, on_text=None, via: str = "") -> tuple[list[dict], str | None]:
     """Run one turn. On failure the user's turn is dropped so the history stays valid.
 
     `say(text)` delivers the instant "Yes sir, opening Spotify." when the first tool starts. The returned
@@ -101,13 +101,35 @@ def respond(history: list[dict], user_text: str, confirm, say, history_file: str
     the task part-way (cancel_task), in which case the history notes what had already been done.
     `actions_out`, if given, receives what each tool actually reported, to show the user as proof.
     `on_text`, if given, receives the reply as Claude writes it (see FirstSentence).
+    `via` ("voice", "telegram"): where the request came from; the dashboard's feed shows the conversation from there
+    too (the dashboard reports its own requests itself, so it passes nothing).
     """
+    show = _feed(via) if via else (lambda direction, text: None)
+    show("in", user_text.rsplit("]\n", 1)[-1])  # without the [note] phone messages start with
+
+    def said(text: str) -> None:
+        show("out", text)
+        say(text)
+
     with _respond_lock:
+        result = None
         try:
-            return _respond(history, user_text, confirm, say, history_file, on_text)
+            result = _respond(history, user_text, confirm, said, history_file, on_text)
+            return result
         finally:
+            if result is not None:
+                show("out", "Stopped." if result[1] is None else result[1])
             if actions_out is not None:
                 actions_out[:] = list(activity)
+
+
+def _feed(via: str):
+    from team import events
+
+    def show(direction: str, text: str) -> None:
+        if text and text.strip():
+            events.emit("jarvis", direction=direction, text=text.strip(), via=via)
+    return show
 
 
 class FirstSentence:
@@ -370,7 +392,7 @@ def run_voice() -> None:
             threading.Thread(target=speak, args=(sentence,), daemon=True).start()
 
         first = FirstSentence(say_early)
-        history, response = respond(history, text, confirm_voice, acknowledge_aloud, on_text=first)
+        history, response = respond(history, text, confirm_voice, acknowledge_aloud, on_text=first, via="voice")
         done.set()
         if watcher.is_alive():
             watcher.join(timeout=2)

@@ -598,6 +598,8 @@ const VERBS = { web_search: "searching the web", read_file: "reading a file", li
   job_tracker: "checking your applications", travel_search_links: "searching flights and stays",
   read_travel_page: "reading a travel page", save_trip: "saving a trip", saved_trips: "checking your trips" };
 
+const VIA = { voice: "🎙 voice", telegram: "📱 Telegram" };   // where a conversation with Jarvis happened
+
 // ---------- helpers ----------
 function api(path, body) {
   return fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Jarvis-Token": TOKEN },
@@ -1304,8 +1306,8 @@ function handle(e) {
     case "approval_done": document.getElementById("ap-" + e.approval)?.remove(); render();
       feed("you", `${t} · ${e.who}`, e.approved ? "approved" : "declined"); break;
     case "jarvis":
-      if (e.direction === "in") { feed("you", `${t} · ${T.words.user} → ${T.words.jarvis}`, e.text); flyMessage("user", "jarvis", T.status.waiting, "user", e.text); }
-      else { feed("jar", `${t} · ${T.words.jarvis}`, e.text); flyMessage("jarvis", "user", T.status.working, "msg", e.text); }
+      if (e.direction === "in") { feed("you", `${t} · ${T.words.user}${e.via ? ` (${VIA[e.via] || e.via})` : ""} → ${T.words.jarvis}`, e.text); flyMessage("user", "jarvis", T.status.waiting, "user", e.text); }
+      else { feed("jar", `${t} · ${T.words.jarvis}${e.via ? ` → ${VIA[e.via] || e.via}` : ""}`, e.text); flyMessage("jarvis", "user", T.status.working, "msg", e.text); }
       break;
     case "theme": if (e.theme !== themeKey) applyTheme(e.theme, false); break;
     case "cleared":   // finished agents taken off the team
