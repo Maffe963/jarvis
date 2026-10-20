@@ -2,6 +2,11 @@
   "_about": "What's changed in Jarvis and what's planned, shown in the dashboard's Changes tab and the 9am morning report. Update it with every change: add to 'done' (newest first) and move or add items in 'planned'.",
   "done": [
     {
+      "date": "2026-10-20",
+      "title": "No tasks you didn't ask for",
+      "detail": "Claude Code no longer schedules reminders, check-ins, routines or suggested tasks on its own when working on Jarvis; it asks first."
+    },
+    {
       "date": "2026-10-19",
       "title": "Agents keep going on long jobs",
       "detail": "Agents no longer fail after 5 minutes of work. A step is only treated as stuck when Claude goes quiet for 5 minutes, and time spent running tests, rendering, transcribing or waiting on your approval doesn't count. If an agent does get stuck or Claude Code crashes, it starts afresh and carries on from where it left off (up to twice) instead of failing."
